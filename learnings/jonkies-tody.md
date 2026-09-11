@@ -72,6 +72,16 @@ for the decision memo itself. This file is only the process learnings.
   and `utils.sh`'s `wait_healthy`/`reload_caddy`. Cheap, and it removed
   guesswork from every artifact written.
 
+- **The predicted GitHub-App-install round-trip did not happen.** The
+  playbook calls this three-for-three ("expect a 403 on every app repo the
+  first time a port touches it"); here the first push to `jonkies-tody` and
+  the PR both went through cleanly. The plausible difference is that this
+  repo was in the session's scope from the start rather than added
+  mid-session via `add_repo` — `hopsakee-server`, which *was* added
+  mid-session, was only ever read from, so this session doesn't settle it.
+  Treat the round-trip as likely but not certain, and don't pre-emptively
+  ask Jelle for it before a push has actually failed.
+
 ## What should become a template
 
 - **The `Dockerfile`'s two-part VITE guard** (`rm -f .env` in the build
