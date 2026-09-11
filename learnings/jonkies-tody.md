@@ -5,7 +5,8 @@ Ported by: Claude Code on the web
 Tier: B (first one) — **scoping session only, not a completed port**
 
 Status: the container half is built and verified; the backend architecture
-decision is open and deliberately left open. See `jonkies-tody/PORT-NOTES.md`
+decision is **answered** — Path C (plain Postgres + PostgREST + an
+Authelia→JWT shim), prototyped and verified against synthetic data. See `jonkies-tody/PORT-NOTES.md`
 for the decision memo itself. This file is only the process learnings.
 
 ## What I assumed that was wrong
@@ -94,13 +95,35 @@ for the decision memo itself. This file is only the process learnings.
   shapes as the two Tier-A ports; the only real difference is `build.args`
   in compose and the gated (rather than public) Caddy block.
 
+## The most useful thing I got wrong
+
+**I recommended self-hosted Supabase, and Jelle's pushback was right.** My
+reasoning was sound about *what mattered* — the 31 RLS policies and 8 triggers
+must stay enforced in the database, not become app code — but I let that
+conclusion pick the wrong implementation, because I framed the question as the
+plan had framed it: Supabase or SQLite. I optimised for "change the least app
+code" and treated the five-container stack as the price of keeping the security
+model.
+
+The thing that unlocked the third option was already sitting in my own session
+output: I had **written `auth.uid()` as a three-line stub myself**, hours
+earlier, to replay the migrations — and watched all 31 policies work against
+it. That was direct evidence that the policies depend on a JWT claim, not on
+Supabase, and I didn't draw the inference until Jelle objected.
+
+Lesson for the next port, worth more than any of the technical notes below:
+when a decision is presented as two options, check whether the constraint that
+makes it binary is real. Here it wasn't — "keep RLS" and "don't run Supabase"
+were never actually in conflict. And when you've already built something that
+demonstrates a mechanism, ask what else it proves.
+
 ## Open questions for Jelle
 
-All in `jonkies-tody/PORT-NOTES.md` rather than duplicated here — the
-backend decision (Path A self-hosted Supabase vs Path B SQLite rewrite, with
-a recommendation and both paths costed), the one-prompt-or-two login
-question, Authelia family accounts, the subdomain name, and the expected
-GitHub-App-install round-trip before a push to this repo works.
+All in `jonkies-tody/PORT-NOTES.md` rather than duplicated here. Both
+architecture questions are now answered (Path C; one login prompt); what is
+left is confirmation, the live balance-drift bug, whether the family accepts
+signing in with Authelia instead of Google, Authelia family accounts, the
+subdomain name, and whether a `pg_dump` routine closes the hard gate.
 
 ## What only showed up on the real server
 
