@@ -21,6 +21,16 @@ exercised it.
   -s /sbin/nologin -h /home/appuser appuser` instead — `groupadd`/`useradd`
   don't exist there (exit 127). Check `/etc/os-release` inside the actual base
   image before writing this block; don't assume from the app's language.
+  **Follow-up, checked directly against the registry**: there is no
+  Debian-based Caddy image to switch to even if we wanted one. The manifest's
+  own OCI annotations for `caddy:2.8` say `org.opencontainers.image.base.name:
+  alpine:3.20`, and the full tag list only has `2.8` / `2.8-alpine` /
+  `2.8-builder` / `2.8-builder-alpine` (+ Windows variants) — both Linux tags
+  resolve to the same Alpine image. Caddy publishes Alpine-only now. So
+  `node-static-base:20` being Alpine, while every Python app's base is Debian,
+  is not an inconsistency to fix — it's the only option the upstream image
+  offers, short of hand-rolling and maintaining our own Debian+Caddy image.
+  Decision: keep Alpine as the one deliberate exception on the box.
 - ASSUMED, explicitly overridable: each app defaults to
   `<repo-name>.hopsakee.top`, but this is a default, not a rule — the pilot's
   own subdomain is `hd.hopsakee.top`, Jelle's deliberate choice, while the
