@@ -113,3 +113,37 @@ Jelle heeft deze zelf benoemd als de enige echte hobbel voor SQLite. Ze hoeven n
 - [ ] Volgt uit de twee hierboven: heeft de pilot een aparte data-service nodig, of praat elke app direct met zijn eigen bestand?
 
 Zolang deze drie openstaan, geldt: geen app met echte data live zetten.
+---
+
+## Stand 2026-09-11 — de beslissing is nu aan de beurt, ongemeten
+
+De route naar het antwoord op "SQLite of self-hosted Supabase" was: eerst
+`hopsakee-prompts` (1 migratie, 1 edge function) herschrijven en daar de echte
+herschrijfkosten meten. Die stap is overgeslagen. Daarmee komt `jonkies-tody`
+als eerste échte app bij de beslissing aan — ongemeten, en met de hoogste
+inzet van de hele migratie.
+
+Wat direct uit de broncode geverifieerd is (niet aangenomen): 26 migraties,
+waarvan er 25 schoon terugspelen op een lege Postgres 15; netto **8 tabellen,
+4 enums, 11 functies (10 `SECURITY DEFINER`), 8 triggers, 31 RLS-policies**;
+PostgREST + GoTrue + Storage + 1 RPC in gebruik; **geen edge functions en geen
+Realtime**. Dat laatste scheelt: de Supabase-variant is hier vijf containers
+(`db`/`auth`/`rest`/`storage`/`kong`), niet de zeven waartegen het Besluit
+afwoog.
+
+Beide paden zijn concreet uitgewerkt en afgewogen in
+`jonkies-tody/PORT-NOTES.md`, met een aanbeveling (**Path A voor déze app**,
+en de SQLite-meting alsnog op `hopsakee-prompts` doen) en het eerlijkste
+tegenargument erbij. Er is geen app-code geschreven vooruitlopend op de keuze.
+
+Eén observatie die de aard van de harde grens verandert, en die expliciet
+géén sluiproute is: de drie openstaande vragen zijn alle drie *SQLite*-vragen.
+Valt de keuze op Postgres, dan worden ze niet beantwoord maar niet-van-
+toepassing, en vervangen door één gewone vraag (een `pg_dump`-snapshotroutine
+met een getest restore). De grens zelf — geen app met echte data live zolang
+er geen bewezen back-uproutine draait — blijft onverkort staan.
+
+Ook nog open, en niet onafhankelijk hiervan: één inlogprompt of twee (zie
+`PORT-NOTES.md`). De variant "één prompt via Authelia-headers" bestaat alleen
+als de app een eigen backend krijgt die die headers kan lezen — dus alleen
+onder Path B.
