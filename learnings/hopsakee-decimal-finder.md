@@ -105,15 +105,30 @@ since this port explicitly exercised and fixed it; left the `VITE_*`
 build-arg line ASSUMED since this app doesn't use any `VITE_*` vars and so
 never actually exercised it.
 
+## Resolved after merge
+
+- **Subdomain naming precedent — answered.** Jelle confirmed `hd.hopsakee.top`
+  was specific to this app, not a new default: "Most often I want the repo
+  name to be the same as the web-url start." So `ren-afstand` and `skillkeep`
+  default to `ren-afstand.hopsakee.top` / `skillkeep.hopsakee.top` unless he
+  says otherwise for a specific app — matching `MIGRATION-PLAN.md`'s original
+  `<repo-name>.hopsakee.top` default, not the `pkw-web`-style divergent-name
+  exception.
+- **Is `node-static-base:20` being Alpine (while every Python app is Debian) a
+  problem to fix?** Jelle asked directly after the merge. Checked the
+  registry rather than assume: Caddy's official image has **no Debian-based
+  tag at all** — `caddy:2.8`'s own OCI annotations say `base.name:
+  alpine:3.20`, and the full tag list is just `2.8`/`2.8-alpine`/
+  `2.8-builder`/`2.8-builder-alpine` (+ Windows), both Linux ones resolving to
+  the same Alpine image. So there was no Debian option being passed over —
+  the only way to get Debian+Caddy would be hand-rolling and maintaining that
+  image ourselves (install the `caddy` binary onto `debian:bookworm-slim`,
+  own its security-update cadence going forward). Decision: keep Alpine as
+  the one deliberate exception on the box; folded into
+  `PORTING-PLAYBOOK.md`'s non-root/Alpine bullet.
+
 ## Open questions for Jelle
 
-- **Subdomain naming precedent.** You picked `hd.hopsakee.top` for this app
-  while the repo/container/deploy-script names stay
-  `hopsakee-decimal-finder` throughout — mirroring the existing
-  `pkw-web`→`datalab-knowledge.hopsakee.top` precedent where the container
-  name and public subdomain already differ. Worth confirming this is the
-  pattern you want going forward for the rest of the Tier-A rollout
-  (`ren-afstand`, `skillkeep`), or whether it was specific to this app.
 - **`package-lock.json` drift.** I regenerated it with a clean `npm install`
   in this sandbox (Node 22.22.2, npm 10.9.7/10.9.8 across the two
   environments touched). Worth a `npm ci` smoke test on whatever Node version
