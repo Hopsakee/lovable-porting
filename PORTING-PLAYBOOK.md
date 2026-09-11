@@ -1,6 +1,7 @@
 # Porting playbook
 
-Status: v1, one pilot port done (hopsakee-decimal-finder / findjd, Tier-A static).
+Status: v1, two Tier-A static ports done (hopsakee-decimal-finder / findjd —
+the pilot; ren-afstand — second app, same pattern reused unchanged).
 Every claim below is either VERIFIED (a real port confirmed it) or ASSUMED (it came
 from planning). Never promote an ASSUMED line to VERIFIED without a run that
 exercised it.
@@ -31,21 +32,69 @@ exercised it.
   is not an inconsistency to fix — it's the only option the upstream image
   offers, short of hand-rolling and maintaining our own Debian+Caddy image.
   Decision: keep Alpine as the one deliberate exception on the box.
-- ASSUMED, explicitly overridable: each app defaults to
-  `<repo-name>.hopsakee.top`, but this is a default, not a rule — the pilot's
-  own subdomain is `hd.hopsakee.top`, Jelle's deliberate choice, while the
-  repo/container/deploy-script names all stayed `hopsakee-decimal-finder`
-  (mirroring the pre-existing `pkw-web` container /
-  `datalab-knowledge.hopsakee.top` subdomain precedent, where those two names
-  already differ).
+- VERIFIED (ren-afstand): each app defaults to `<repo-name>.hopsakee.top`
+  unless Jelle says otherwise for that specific app — confirmed directly
+  after the pilot ("most often I want the repo name to be the same as the
+  web-url start"). The pilot's `hd.hopsakee.top` was the deliberate
+  exception, not a new pattern; `ren-afstand` uses the plain default with no
+  divergence between repo/container/subdomain names.
+- **Before treating a repo as absent/empty and reconstructing its source
+  from the live Lovable project, check whether it's private, not missing.**
+  This session's GitHub access is scoped to a fixed repo list at session
+  start; a private repo Jelle hasn't added yet is invisible to
+  `list_repos`/`add_repo` the same way a genuinely nonexistent repo would
+  be — there's no access-denied signal to tell them apart from inside the
+  session. Hit this on `ren-afstand`: assumed empty, had it reconstructed
+  from Lovable, then Jelle clarified it already had real commit history and
+  was just private. Caught before any damage by diffing the reconstruction
+  against the real `origin/main` (file list + content) before pushing
+  anything — but the right move is to ask "could this be private?" before
+  reconstructing, not after.
+- VERIFIED, three-for-three now (hopsakee-decimal-finder, lovable-porting,
+  ren-afstand): a brand-new or previously-untouched repo **rejects pushes
+  with a 403** ("Claude doesn't have GitHub access to `<repo>` for your
+  organization... An org admin can install the Claude GitHub App...") even
+  after `add_repo` reports it added and readable. Read access and push
+  access are separately scoped — `add_repo` only confirms the former. This
+  isn't a one-time setup fluke; expect it on **every** app repo the first
+  time a port touches it, and budget for a "please install the GitHub App
+  on this repo" round-trip before the app-side PR can actually open. Once
+  Jelle installs it for a given repo, later pushes to that same repo work
+  without asking again.
+- **Confirmed, deliberate design (Jelle, after the ren-afstand PRs): the
+  per-app reference copies (`deploy.sh`, `caddy-snippet.txt`, and — for a
+  different reason, see below — the app's own `Caddyfile`) living in the
+  app repo alongside the real files in `hopsakee-server` are intentional
+  duplication, not accidental.** `deploy.sh`/`caddy-snippet.txt` exist so
+  the deploy contract for an app is readable/documented next to its source
+  without needing the `hopsakee-server` repo open; they're never executed
+  automatically and must be hand-kept in sync with the real
+  `hopsakee-server/server_setup/deploy-<app>.sh` and the block already
+  pasted into `hopsakee-server/config/caddy/conf/Caddyfile`. This was
+  questioned directly and explicitly kept as-is — don't "clean up" this
+  duplication in a future port without asking again. Separately, the app
+  repo's own `Caddyfile` is **not** a duplicate of anything — it configures
+  a completely different Caddy process (the one baked into the app's own
+  Docker image, serving that app's static files with cache headers) from
+  the shared box-wide Caddy in `hopsakee-server` (which only does
+  hostname-based TLS routing to each app's container). The two look
+  nothing alike because they do different jobs; that's expected, not a bug.
 
 ## Known traps
 - ASSUMED, still untested: Vite reads env at BUILD time. `VITE_*` must be
   compose `build.args`, never `environment:`. Get this wrong and the app
-  silently ships pointing at the old cloud project. **The pilot app uses zero
-  `VITE_*` vars**, so this trap has still never actually been hit by a real
-  port — treat it as live risk for the next Vite app that has any build-time
-  env vars (almost certainly the first Tier-B/Supabase one).
+  silently ships pointing at the old cloud project. **Two static ports in
+  (pilot + ren-afstand), zero apps have used any `VITE_*` vars** — this trap
+  has still never actually been hit by a real port. Don't let two clean
+  static ports create false confidence; treat it as live, unproven risk
+  until the first Tier-B/Supabase app actually exercises it.
+- VERIFIED (both ports): the committed `package-lock.json` from a
+  Lovable-exported repo reliably fails `npm ci` under this sandbox's npm
+  version (rollup/vitest optional-dependency drift — not the same missing
+  packages both times, but the same failure shape). Two-for-two now, not
+  pilot-specific bad luck — **expect to `rm package-lock.json && npm
+  install` on every port** and budget for it up front rather than
+  discovering it each time.
 - VERIFIED (hopsakee-decimal-finder pilot): PWA service workers cause
   stale-index.html after redeploy unless `sw.js`/`manifest.webmanifest`/
   `index.html` get `Cache-Control: no-cache` (hashed `/assets/*` files are
