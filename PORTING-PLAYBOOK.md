@@ -50,6 +50,35 @@ exercised it.
   against the real `origin/main` (file list + content) before pushing
   anything — but the right move is to ask "could this be private?" before
   reconstructing, not after.
+- VERIFIED, three-for-three now (hopsakee-decimal-finder, lovable-porting,
+  ren-afstand): a brand-new or previously-untouched repo **rejects pushes
+  with a 403** ("Claude doesn't have GitHub access to `<repo>` for your
+  organization... An org admin can install the Claude GitHub App...") even
+  after `add_repo` reports it added and readable. Read access and push
+  access are separately scoped — `add_repo` only confirms the former. This
+  isn't a one-time setup fluke; expect it on **every** app repo the first
+  time a port touches it, and budget for a "please install the GitHub App
+  on this repo" round-trip before the app-side PR can actually open. Once
+  Jelle installs it for a given repo, later pushes to that same repo work
+  without asking again.
+- **Confirmed, deliberate design (Jelle, after the ren-afstand PRs): the
+  per-app reference copies (`deploy.sh`, `caddy-snippet.txt`, and — for a
+  different reason, see below — the app's own `Caddyfile`) living in the
+  app repo alongside the real files in `hopsakee-server` are intentional
+  duplication, not accidental.** `deploy.sh`/`caddy-snippet.txt` exist so
+  the deploy contract for an app is readable/documented next to its source
+  without needing the `hopsakee-server` repo open; they're never executed
+  automatically and must be hand-kept in sync with the real
+  `hopsakee-server/server_setup/deploy-<app>.sh` and the block already
+  pasted into `hopsakee-server/config/caddy/conf/Caddyfile`. This was
+  questioned directly and explicitly kept as-is — don't "clean up" this
+  duplication in a future port without asking again. Separately, the app
+  repo's own `Caddyfile` is **not** a duplicate of anything — it configures
+  a completely different Caddy process (the one baked into the app's own
+  Docker image, serving that app's static files with cache headers) from
+  the shared box-wide Caddy in `hopsakee-server` (which only does
+  hostname-based TLS routing to each app's container). The two look
+  nothing alike because they do different jobs; that's expected, not a bug.
 
 ## Known traps
 - ASSUMED, still untested: Vite reads env at BUILD time. `VITE_*` must be

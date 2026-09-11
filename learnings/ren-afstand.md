@@ -63,6 +63,25 @@ Tier: static
 
 ## Gotchas discovered
 
+- **`add_repo`/read access and push access are separately scoped — a repo
+  reads fine but 403s on push until the Claude GitHub App is installed on
+  it specifically.** Hit this on `ren-afstand` itself (`git push` → "Claude
+  doesn't have GitHub access to Hopsakee/ren-afstand for your organization
+  ... An org admin can install the Claude GitHub App..."), same as
+  `hopsakee-decimal-finder` and `lovable-porting` needed during the pilot.
+  Three-for-three now — expect this on every new app repo, not just the
+  first one ever touched, and budget for the round-trip to Jelle
+  (https://github.com/apps/claude/installations/select_target) before the
+  app-side PR can open. Once granted for a repo it doesn't need repeating
+  for that repo.
+- Jelle confirmed directly (asked why `deploy.sh`/`caddy-snippet.txt`/
+  `Caddyfile` exist in the app repo when `hopsakee-server` already has the
+  "real" versions) that the reference-copy duplication is deliberate and to
+  keep it as-is — see the new playbook item. Also clarified in that
+  exchange that the app's own `Caddyfile` isn't actually a duplicate of
+  anything (different Caddy process, different job) — worth having that
+  explanation on hand for the next person who asks the same reasonable
+  question.
 - **Same `package-lock.json` drift as the pilot, on a completely different
   app** (`npm ci` → `Invalid: lock file's @jridgewell/sourcemap-codec@1.5.0
   does not satisfy @jridgewell/sourcemap-codec@1.6.0`, plus several missing
