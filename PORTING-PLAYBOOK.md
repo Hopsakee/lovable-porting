@@ -161,16 +161,64 @@ exercised it.
   helpers — those are precisely the ones that need hand-reimplementation if
   an app moves off Supabase.
 
+## Tier-B backend pattern — VERIFIED (jonkies-tody)
+- **Supabase-exported apps do not need Supabase to keep their security model.**
+  Verified end-to-end in a sandbox: the app's 8 tables, 11 functions, 8
+  triggers, 31 RLS policies and its `collect_prize` RPC all work unchanged
+  behind **plain Postgres + PostgREST + a JWT we mint ourselves** — no GoTrue,
+  no Kong, no Storage service, no Studio. Three backend containers instead of
+  five.
+  The hinge is that `auth.uid()` is not a Supabase feature. It is three lines
+  of SQL over a request-scoped setting that any JWT-validating gateway
+  populates:
+  `SELECT nullif(current_setting('request.jwt.claims', true)::json->>'sub','')::uuid`
+  PostgREST (the same component Supabase uses for its data API) populates it.
+  So the choice for a ported app is **not** "self-host all of Supabase or
+  rewrite everything" — the schema is portable to bare Postgres, and only
+  auth/storage need replacing. GoTrue is the redundant part once Authelia is
+  the identity provider, which is exactly what Jelle objected to paying for.
+  Verified with real requests: anonymous → `[]`; authenticated → correct
+  RLS-filtered rows; participant self-promotion silently reverted;
+  admin-only inserts 403; unowned-prize collection rejected by the RPC's own
+  check. `handle_new_user()` also fires on a plain `INSERT INTO auth.users`,
+  so the signup flow works against our own identity table.
+  Reproduction scripts live in `jonkies-tody/docs/pathc-prototype/`.
+- **`@supabase/supabase-js` still works against bare PostgREST**, so every
+  `.from()` / `.rpc()` call site in a ported app survives untouched — the
+  client just gets our JWT instead of a GoTrue session. Only the `auth.*` and
+  `storage.*` call sites need replacing. This is what collapses a Tier-B port
+  from "rewrite everything" to a few hundred lines.
+- **Check for silent-revert triggers before writing any cutover runbook.**
+  jonkies-tody's `protect_profile_columns()` reverts `role`/`is_approved`/
+  `total_points` whenever `is_admin(auth.uid())` is false — and `auth.uid()` is
+  NULL on *any* connection without a JWT: plain `psql`, a restore, a
+  maintenance script. It raises no error, it just discards the change. So
+  "restore, then correct the data" can appear to succeed and do nothing.
+  Bootstrapping the first admin on a fresh database requires dropping the
+  trigger, making the change, and recreating it. Always verify a correction
+  landed instead of assuming.
+- **Replaying the schema is also a bug-finding exercise, not just a
+  compatibility check.** Running jonkies-tody's real RPC against the replayed
+  schema surfaced a live data-integrity bug in the app as shipped (prize
+  collections recorded but never deducted, because the balance trigger's own
+  UPDATE is reverted by the guard above when a participant triggers it).
+  Budget for the possibility that a Tier-B port finds real bugs in the app it
+  is porting, and that fixing them belongs before the cutover rather than
+  after.
+
 ## Not yet answered
-- SQLite backup routine on the box.
-- Whether one SQLite file can safely serve more than one container.
-- **Which backend jonkies-tody (and after it, every Tier-B app) actually
-  talks to.** The Besluit's plan was to measure the SQLite rewrite cost on
-  `hopsakee-prompts` first; that was skipped, so the first real app hit the
-  decision unmeasured. Scoped in `jonkies-tody/PORT-NOTES.md` with both
-  paths costed and a recommendation; open until Jelle decides. Note that all
-  three SQLite questions above only *apply* if the answer is SQLite.
-- Whether jonkies-tody gets one login prompt or two (Authelia gate + the
-  app's own Google sign-in). Interacts with the backend decision — see
-  `PORT-NOTES.md`; the "single prompt via Authelia headers" option only
-  exists if the app gets a backend of ours to read them.
+- SQLite backup routine on the box. **No longer blocking jonkies-tody** — that
+  app's backend decision landed on Postgres. Still open for any app that ends
+  up on SQLite.
+- Whether one SQLite file can safely serve more than one container. Same
+  status: not blocking jonkies-tody any more.
+- Whether a `pg_dump` snapshot routine with a tested restore is what Jelle
+  accepts as closing the hard gate for Postgres-backed apps.
+- ~~Which backend jonkies-tody talks to.~~ **Answered**: neither self-hosted
+  Supabase nor a SQLite rewrite, but plain Postgres + PostgREST + an
+  Authelia→JWT shim (see the Tier-B pattern above, and
+  `jonkies-tody/PORT-NOTES.md`). Pending Jelle's confirmation.
+- ~~Whether jonkies-tody gets one login prompt or two.~~ **Answered as a
+  consequence**: one. Authelia becomes the identity provider and Google
+  sign-in is dropped, so no second login, no second approval list, and no
+  Google OAuth client to register at all.

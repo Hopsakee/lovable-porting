@@ -147,3 +147,49 @@ Ook nog open, en niet onafhankelijk hiervan: één inlogprompt of twee (zie
 `PORT-NOTES.md`). De variant "één prompt via Authelia-headers" bestaat alleen
 als de app een eigen backend krijgt die die headers kan lezen — dus alleen
 onder Path B.
+
+## Stand 2026-09-11 (2) — de keuze is Path C, en er is een bug gevonden
+
+Jelle duwde terug op beide opties, terecht: SQLite past slecht bij meerdere
+gebruikers met rij-niveau toegangsbeperking, en een vijf-container
+Supabase-stack is buiten proportie voor ~20 gebruikers als Authelia al
+iedereen authenticeert.
+
+Dat maakte een derde weg zichtbaar. Wat beschermd moest worden was nooit
+Supabase, maar dát de 31 RLS-policies en 8 triggers **in de database
+afgedwongen** blijven in plaats van applicatiecode te worden. Dat pleit voor
+Postgres, niet voor Supabase. En `auth.uid()` — waar al die policies op
+draaien — is geen Supabase-feature maar drie regels SQL over een
+request-scoped setting die elke JWT-validerende gateway vult.
+
+**Path C: kale Postgres + PostgREST + een kleine Authelia→JWT-shim.** Drie
+backend-containers in plaats van vijf. GoTrue en Kong vervallen — precies de
+onderdelen die dubbelop waren. In de sandbox end-to-end geverifieerd tegen
+synthetische data: 26/26 migraties draaien, `auth.uid()` resolvet uit een
+zelf-gemunte JWT, anonieme requests krijgen `[]`, en elke
+escalatiepoging als deelnemer wordt geblokkeerd precies zoals onder echt
+Supabase. `@supabase/supabase-js` blijft werken tegen kale PostgREST, dus alle
+`.from()`/`.rpc()`-aanroepen blijven ongewijzigd; alleen auth en storage
+moeten vervangen worden (~250 regels). Uitwerking in
+`jonkies-tody/PORT-NOTES.md`, reproductie in
+`jonkies-tody/docs/pathc-prototype/`.
+
+Daarmee vervalt ook de tweede open vraag: Authelia wordt de
+identity-provider, Google-login verdwijnt, dus één inlogprompt en geen
+Google-OAuth-client meer nodig.
+
+**En passant een echte bug gevonden die nú speelt**, los van de port:
+prijzen die een deelnemer inwisselt worden wél geregistreerd maar **niet
+afgeschreven**. `update_user_points()` doet een UPDATE op `profiles`, en die
+UPDATE triggert `protect_profile_columns()`, die `total_points` terugdraait
+zodra `is_admin(auth.uid())` onwaar is — bij een deelnemer dus altijd. Dat
+verklaart de vier "fix balances"-migraties in de historie: die herberekenden
+telkens het saldo zonder de oorzaak weg te nemen. Een geteste fix plus een
+read-only controlequery staan in
+`jonkies-tody/docs/proposed-fix-balance-drift.sql`, bewust níét in
+`supabase/migrations/`, zodat mergen van de PR niets aan de echte database
+verandert.
+
+De harde grens blijft staan. Alleen de vorm verandert: geen drie
+SQLite-vragen meer, maar één gewone `pg_dump`-snapshotroutine met een getest
+restore. Of dát de grens sluit, bepaalt Jelle.
