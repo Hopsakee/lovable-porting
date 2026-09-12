@@ -183,11 +183,48 @@ exercised it.
   check. `handle_new_user()` also fires on a plain `INSERT INTO auth.users`,
   so the signup flow works against our own identity table.
   Reproduction scripts live in `jonkies-tody/docs/pathc-prototype/`.
-- **`@supabase/supabase-js` still works against bare PostgREST**, so every
-  `.from()` / `.rpc()` call site in a ported app survives untouched — the
-  client just gets our JWT instead of a GoTrue session. Only the `auth.*` and
-  `storage.*` call sites need replacing. This is what collapses a Tier-B port
-  from "rewrite everything" to a few hundred lines.
+- **VERIFIED with the real client, through the real routing**:
+  `@supabase/supabase-js` works against bare PostgREST, so every `.from()` /
+  `.rpc()` call site in a ported app survives untouched — the client just gets
+  our JWT instead of a GoTrue session. Only the `auth.*` and `storage.*` call
+  sites need replacing. This is what collapses a Tier-B port from "rewrite
+  everything" to a few hundred lines.
+  Two mechanics worth copying rather than rediscovering: supabase-js appends
+  `/rest/v1` to the base URL, so the site block needs
+  `handle_path /rest/v1/* { reverse_proxy <rest>:3000 }` (handle_path strips
+  the prefix); and injecting the token via `global.fetch` rather than
+  `global.headers` lets it refresh on a 401 without any call site knowing.
+- **VERIFIED (jonkies-tody) — Caddy `forward_auth` header handling, and two
+  traps in it.** An Authelia-header-reading service is only as trustworthy as
+  the gate in front of it, so this was tested against real `caddy:2.8` with a
+  stand-in authorizer rather than reasoned about:
+  1. **Spoofing does not work, and no stripping is needed.** `copy_headers`
+     SETS the listed headers on the upstream request, overwriting whatever the
+     client sent. Authorizer saying `kind1` + client forging
+     `Remote-User: <admin>` → the service saw `kind1`.
+  2. **Do NOT "harden" it by stripping client headers first.** The obvious
+     `request_header -Remote-User` before `forward_auth` BREAKS the gate:
+     `request_header` sorts AFTER `forward_auth` in Caddy's directive order, so
+     it deletes the header the gate just set and every request 401s. This was
+     written into a draft snippet as a security improvement and would have
+     shipped a dead app.
+  3. **The real trap**: `copy_headers` sets a header even when the authorizer
+     did NOT return it — to the literal unresolved placeholder text
+     `{http.reverse_proxy.header.Remote-Email}`. That string reached a JWT
+     claim before the shim validated it. List only what the authorizer
+     actually returns, and validate the SHAPE of every optional header
+     downstream regardless.
+- **VERIFIED: a `pg_dump` routine with a tested restore is straightforward and
+  should be written as part of the port, not after it.** Dump the WHOLE
+  database, not just `public` — `auth.users` holds the identities every
+  `profiles` row keys on, and losing them orphans the ledger. Verify the dump
+  (gzip integrity + PostgreSQL's own "dump complete" marker) and atomically
+  rename it into place, so a truncated dump is never mistaken for a backup.
+  Back up any image/file volume too, or a restore yields rows pointing at
+  files that no longer exist. Pull from the NAS rather than pushing from the
+  box: the internet-facing host then holds no NAS credentials and cannot
+  delete backup history. Proven by restoring into an empty Postgres and
+  diffing row counts across every app table.
 - **Check for silent-revert triggers before writing any cutover runbook.**
   jonkies-tody's `protect_profile_columns()` reverts `role`/`is_approved`/
   `total_points` whenever `is_admin(auth.uid())` is false — and `auth.uid()` is

@@ -193,3 +193,38 @@ verandert.
 De harde grens blijft staan. Alleen de vorm verandert: geen drie
 SQLite-vragen meer, maar één gewone `pg_dump`-snapshotroutine met een getest
 restore. Of dát de grens sluit, bepaalt Jelle.
+
+## Stand 2026-09-12 — Path C bevestigd en gebouwd
+
+Jelle heeft alle zes de open punten beantwoord: Path C, één inlogprompt
+(Authelia als identity provider, Google eruit), een nieuwe `family`-groep,
+`jonkies-tody.hopsakee.top`, en `pg_dump` met een getest restore als
+invulling van de harde grens.
+
+De stack is gebouwd en end-to-end geverifieerd tegen synthetische data — niets
+uitgerold, geen echte data aangeraakt. Drie containers: Postgres, PostgREST en
+een eigen Authelia→JWT-shim. De shim is de enige nieuwe security-kritische code
+en is ook zo getest, tegen een echte `caddy:2.8`: spoofen van `Remote-User`
+lukt niet (`copy_headers` overschrijft wat de client stuurt). Twee bevindingen
+veranderden het ontwerp: het "hardenen" door client-headers te strippen vóór
+`forward_auth` **breekt de gate** (verkeerde directive-volgorde, alles 401't),
+en `copy_headers` zet een header óók als de authorizer hem niet teruggaf — als
+letterlijke placeholder-tekst, die in een JWT-claim belandde voordat de shim
+erop controleerde.
+
+De echte `@supabase/supabase-js` draait ongewijzigd tegen kale PostgREST via de
+echte routing, dus alle `.from()`/`.rpc()`-aanroepen bleven staan. Een volledig
+gezinsscenario klopt: goedkeuren, punten toekennen, prijs inwisselen — 100 naar
+60, nul drift, met de balансfix erin.
+
+Back-up: script geschreven, écht gedraaid, en de dump teruggezet in een lege
+Postgres met gelijke saldi en gelijke rijaantallen over alle acht tabellen.
+`jonkies-tody/docs/BACKUP.md` legt uit waarom telefoons van gezinsleden niets
+bevatten om te back-uppen (de database staat op Hetzner, niet op het apparaat)
+en waarom de NAS trekt in plaats van dat de box duwt.
+
+Wat resteert vóór cutover staat in `jonkies-tody/PORT-NOTES.md`: de drift-query
+op het live project draaien, de back-up op de échte box installeren en één keer
+terugzetten (dát sluit de grens), Authelia-groep en -regels, de
+`hopsakee-server`-kant, en de datamigratie met behoud van UUID's plus de
+`authelia_user`-koppeling per gezinslid.
