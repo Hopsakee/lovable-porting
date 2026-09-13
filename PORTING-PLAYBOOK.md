@@ -1,7 +1,9 @@
 # Porting playbook
 
-Status: v1, two Tier-A static ports done (hopsakee-decimal-finder / findjd —
-the pilot; ren-afstand — second app, same pattern reused unchanged).
+Status: v2. Two Tier-A static ports done (hopsakee-decimal-finder / findjd —
+the pilot; ren-afstand — second app, same pattern reused unchanged), plus the
+first Tier-B app scoped and its container half built and verified
+(jonkies-tody — backend decision still open, see its `PORT-NOTES.md`).
 Every claim below is either VERIFIED (a real port confirmed it) or ASSUMED (it came
 from planning). Never promote an ASSUMED line to VERIFIED without a run that
 exercised it.
@@ -81,20 +83,47 @@ exercised it.
   nothing alike because they do different jobs; that's expected, not a bug.
 
 ## Known traps
-- ASSUMED, still untested: Vite reads env at BUILD time. `VITE_*` must be
-  compose `build.args`, never `environment:`. Get this wrong and the app
-  silently ships pointing at the old cloud project. **Two static ports in
-  (pilot + ren-afstand), zero apps have used any `VITE_*` vars** — this trap
-  has still never actually been hit by a real port. Don't let two clean
-  static ports create false confidence; treat it as live, unproven risk
-  until the first Tier-B/Supabase app actually exercises it.
-- VERIFIED (both ports): the committed `package-lock.json` from a
+- **VERIFIED (jonkies-tody) — and the real shape is worse than this line
+  used to describe.** Vite reads env at BUILD time; `VITE_*` must be compose
+  `build.args`, never `environment:`. The old ASSUMED wording said getting it
+  wrong makes the app "silently ship pointing at the old cloud project". The
+  mechanism that makes that happen, found on the first app to actually use
+  `VITE_*`: **the Lovable-exported repo COMMITS its `.env`** (git-tracked,
+  and `.gitignore` has no `env` entry at all), holding the old cloud
+  project's URL and publishable key. Vite reads it out of the build context
+  automatically. So a build with no env configuration at all does not fail
+  loudly — it produces a working-looking app still talking to the old cloud
+  Supabase project. Confirmed directly: a plain `npm run build` baked the
+  old `*.supabase.co` host into the bundle.
+  Also confirmed, the half that makes a fix possible: **a shell/ARG value
+  does override the committed `.env`** — same tree, `VITE_SUPABASE_URL=...
+  npm run build`, and the new host is what lands in the bundle.
+  So the fix is two halves, and one alone is not enough: `rm -f .env` inside
+  the build stage so the committed file can never win by default, AND a
+  build-time guard that exits non-zero if the args are missing, turning a
+  silently-wrong production app into a build failure. Both verified through
+  a real `docker build` (argless build exits 1; correct build ships a bundle
+  containing the new host and no trace of the old project ref). Copy this
+  pattern into every remaining Tier-B port — see `jonkies-tody/Dockerfile`.
+  Related, so it isn't mistaken for a secrets leak: the publishable ("anon")
+  key is public by design — it ships inside the browser bundle, and access
+  control is RLS+JWT, not key secrecy. Docker's `SecretsUsedInArgOrEnv` lint
+  fires on it and is safe to ignore *for that key only*. The service-role
+  key and OAuth client secrets are real secrets and belong on the secrets
+  volume.
+- VERIFIED (three ports): the committed `package-lock.json` from a
   Lovable-exported repo reliably fails `npm ci` under this sandbox's npm
   version (rollup/vitest optional-dependency drift — not the same missing
-  packages both times, but the same failure shape). Two-for-two now, not
+  packages each time, but the same failure shape). Three-for-three now, not
   pilot-specific bad luck — **expect to `rm package-lock.json && npm
   install` on every port** and budget for it up front rather than
-  discovering it each time.
+  discovering it each time. On `jonkies-tody` (the newer
+  `new_style_vite_react_shadcn_ts_testing_2026-01-08` template) the missing
+  entries were specifically the **test-scaffolding** packages
+  (`@testing-library/dom` and its tree): that template adds vitest/testing-
+  library to `package.json` but ships a lockfile that never saw them. So the
+  newer template does not fix this trap — if anything its extra devDeps are
+  exactly what's missing.
 - VERIFIED (hopsakee-decimal-finder pilot): PWA service workers cause
   stale-index.html after redeploy unless `sw.js`/`manifest.webmanifest`/
   `index.html` get `Cache-Control: no-cache` (hashed `/assets/*` files are
@@ -111,6 +140,122 @@ exercised it.
   the app ships no `.wasm` file, so this was never actually exercised
   end-to-end. Verify for real on the first app that has one.
 
+## Verifying a Tier-B port without touching real data
+- VERIFIED (jonkies-tody): an app's whole migration chain can be replayed
+  against a throwaway `postgres:15-alpine` container in the sandbox, which
+  is the "replay app migrations against the empty new DB first" step
+  `MIGRATION-PLAN.md` already calls for — done early, for free, before any
+  real data or credentials exist. It needs ~40 lines of stubs for the
+  Supabase-provided bits the migrations assume (`auth.users`, `auth.uid()`,
+  `storage.buckets`/`storage.objects`, the `anon`/`authenticated`/
+  `service_role` roles). 25 of jonkies-tody's 26 replayed cleanly first try.
+  Two things this buys that reading the SQL does not: it proves the chain
+  actually applies in filename order, and querying `pg_policies`/`pg_proc`/
+  `pg_trigger` afterwards gives the **net** final schema (31 policies, 11
+  functions, 8 triggers) rather than a raw count of `CREATE` statements that
+  later migrations have already dropped and replaced. Do this on every
+  Tier-B port before estimating a rewrite.
+- The one migration that failed did so against the *stub*, not Postgres: it
+  calls `storage.extension(name)`, a Supabase Storage built-in, inside an
+  upload policy. Worth knowing which migrations depend on Supabase-specific
+  helpers — those are precisely the ones that need hand-reimplementation if
+  an app moves off Supabase.
+
+## Tier-B backend pattern — VERIFIED (jonkies-tody)
+- **Supabase-exported apps do not need Supabase to keep their security model.**
+  Verified end-to-end in a sandbox: the app's 8 tables, 11 functions, 8
+  triggers, 31 RLS policies and its `collect_prize` RPC all work unchanged
+  behind **plain Postgres + PostgREST + a JWT we mint ourselves** — no GoTrue,
+  no Kong, no Storage service, no Studio. Three backend containers instead of
+  five.
+  The hinge is that `auth.uid()` is not a Supabase feature. It is three lines
+  of SQL over a request-scoped setting that any JWT-validating gateway
+  populates:
+  `SELECT nullif(current_setting('request.jwt.claims', true)::json->>'sub','')::uuid`
+  PostgREST (the same component Supabase uses for its data API) populates it.
+  So the choice for a ported app is **not** "self-host all of Supabase or
+  rewrite everything" — the schema is portable to bare Postgres, and only
+  auth/storage need replacing. GoTrue is the redundant part once Authelia is
+  the identity provider, which is exactly what Jelle objected to paying for.
+  Verified with real requests: anonymous → `[]`; authenticated → correct
+  RLS-filtered rows; participant self-promotion silently reverted;
+  admin-only inserts 403; unowned-prize collection rejected by the RPC's own
+  check. `handle_new_user()` also fires on a plain `INSERT INTO auth.users`,
+  so the signup flow works against our own identity table.
+  Reproduction scripts live in `jonkies-tody/docs/pathc-prototype/`.
+- **VERIFIED with the real client, through the real routing**:
+  `@supabase/supabase-js` works against bare PostgREST, so every `.from()` /
+  `.rpc()` call site in a ported app survives untouched — the client just gets
+  our JWT instead of a GoTrue session. Only the `auth.*` and `storage.*` call
+  sites need replacing. This is what collapses a Tier-B port from "rewrite
+  everything" to a few hundred lines.
+  Two mechanics worth copying rather than rediscovering: supabase-js appends
+  `/rest/v1` to the base URL, so the site block needs
+  `handle_path /rest/v1/* { reverse_proxy <rest>:3000 }` (handle_path strips
+  the prefix); and injecting the token via `global.fetch` rather than
+  `global.headers` lets it refresh on a 401 without any call site knowing.
+- **VERIFIED (jonkies-tody) — Caddy `forward_auth` header handling, and two
+  traps in it.** An Authelia-header-reading service is only as trustworthy as
+  the gate in front of it, so this was tested against real `caddy:2.8` with a
+  stand-in authorizer rather than reasoned about:
+  1. **Spoofing does not work, and no stripping is needed.** `copy_headers`
+     SETS the listed headers on the upstream request, overwriting whatever the
+     client sent. Authorizer saying `kind1` + client forging
+     `Remote-User: <admin>` → the service saw `kind1`.
+  2. **Do NOT "harden" it by stripping client headers first.** The obvious
+     `request_header -Remote-User` before `forward_auth` BREAKS the gate:
+     `request_header` sorts AFTER `forward_auth` in Caddy's directive order, so
+     it deletes the header the gate just set and every request 401s. This was
+     written into a draft snippet as a security improvement and would have
+     shipped a dead app.
+  3. **The real trap**: `copy_headers` sets a header even when the authorizer
+     did NOT return it — to the literal unresolved placeholder text
+     `{http.reverse_proxy.header.Remote-Email}`. That string reached a JWT
+     claim before the shim validated it. List only what the authorizer
+     actually returns, and validate the SHAPE of every optional header
+     downstream regardless.
+- **VERIFIED: a `pg_dump` routine with a tested restore is straightforward and
+  should be written as part of the port, not after it.** Dump the WHOLE
+  database, not just `public` — `auth.users` holds the identities every
+  `profiles` row keys on, and losing them orphans the ledger. Verify the dump
+  (gzip integrity + PostgreSQL's own "dump complete" marker) and atomically
+  rename it into place, so a truncated dump is never mistaken for a backup.
+  Back up any image/file volume too, or a restore yields rows pointing at
+  files that no longer exist. Pull from the NAS rather than pushing from the
+  box: the internet-facing host then holds no NAS credentials and cannot
+  delete backup history. Proven by restoring into an empty Postgres and
+  diffing row counts across every app table.
+- **Check for silent-revert triggers before writing any cutover runbook.**
+  jonkies-tody's `protect_profile_columns()` reverts `role`/`is_approved`/
+  `total_points` whenever `is_admin(auth.uid())` is false — and `auth.uid()` is
+  NULL on *any* connection without a JWT: plain `psql`, a restore, a
+  maintenance script. It raises no error, it just discards the change. So
+  "restore, then correct the data" can appear to succeed and do nothing.
+  Bootstrapping the first admin on a fresh database requires dropping the
+  trigger, making the change, and recreating it. Always verify a correction
+  landed instead of assuming.
+- **Replaying the schema is also a bug-finding exercise, not just a
+  compatibility check.** Running jonkies-tody's real RPC against the replayed
+  schema surfaced a live data-integrity bug in the app as shipped (prize
+  collections recorded but never deducted, because the balance trigger's own
+  UPDATE is reverted by the guard above when a participant triggers it).
+  Budget for the possibility that a Tier-B port finds real bugs in the app it
+  is porting, and that fixing them belongs before the cutover rather than
+  after.
+
 ## Not yet answered
-- SQLite backup routine on the box.
-- Whether one SQLite file can safely serve more than one container.
+- SQLite backup routine on the box. **No longer blocking jonkies-tody** — that
+  app's backend decision landed on Postgres. Still open for any app that ends
+  up on SQLite.
+- Whether one SQLite file can safely serve more than one container. Same
+  status: not blocking jonkies-tody any more.
+- Whether a `pg_dump` snapshot routine with a tested restore is what Jelle
+  accepts as closing the hard gate for Postgres-backed apps.
+- ~~Which backend jonkies-tody talks to.~~ **Answered**: neither self-hosted
+  Supabase nor a SQLite rewrite, but plain Postgres + PostgREST + an
+  Authelia→JWT shim (see the Tier-B pattern above, and
+  `jonkies-tody/PORT-NOTES.md`). Pending Jelle's confirmation.
+- ~~Whether jonkies-tody gets one login prompt or two.~~ **Answered as a
+  consequence**: one. Authelia becomes the identity provider and Google
+  sign-in is dropped, so no second login, no second approval list, and no
+  Google OAuth client to register at all.

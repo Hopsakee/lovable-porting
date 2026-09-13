@@ -113,3 +113,118 @@ Jelle heeft deze zelf benoemd als de enige echte hobbel voor SQLite. Ze hoeven n
 - [ ] Volgt uit de twee hierboven: heeft de pilot een aparte data-service nodig, of praat elke app direct met zijn eigen bestand?
 
 Zolang deze drie openstaan, geldt: geen app met echte data live zetten.
+---
+
+## Stand 2026-09-11 — de beslissing is nu aan de beurt, ongemeten
+
+De route naar het antwoord op "SQLite of self-hosted Supabase" was: eerst
+`hopsakee-prompts` (1 migratie, 1 edge function) herschrijven en daar de echte
+herschrijfkosten meten. Die stap is overgeslagen. Daarmee komt `jonkies-tody`
+als eerste échte app bij de beslissing aan — ongemeten, en met de hoogste
+inzet van de hele migratie.
+
+Wat direct uit de broncode geverifieerd is (niet aangenomen): 26 migraties,
+waarvan er 25 schoon terugspelen op een lege Postgres 15; netto **8 tabellen,
+4 enums, 11 functies (10 `SECURITY DEFINER`), 8 triggers, 31 RLS-policies**;
+PostgREST + GoTrue + Storage + 1 RPC in gebruik; **geen edge functions en geen
+Realtime**. Dat laatste scheelt: de Supabase-variant is hier vijf containers
+(`db`/`auth`/`rest`/`storage`/`kong`), niet de zeven waartegen het Besluit
+afwoog.
+
+Beide paden zijn concreet uitgewerkt en afgewogen in
+`jonkies-tody/PORT-NOTES.md`, met een aanbeveling (**Path A voor déze app**,
+en de SQLite-meting alsnog op `hopsakee-prompts` doen) en het eerlijkste
+tegenargument erbij. Er is geen app-code geschreven vooruitlopend op de keuze.
+
+Eén observatie die de aard van de harde grens verandert, en die expliciet
+géén sluiproute is: de drie openstaande vragen zijn alle drie *SQLite*-vragen.
+Valt de keuze op Postgres, dan worden ze niet beantwoord maar niet-van-
+toepassing, en vervangen door één gewone vraag (een `pg_dump`-snapshotroutine
+met een getest restore). De grens zelf — geen app met echte data live zolang
+er geen bewezen back-uproutine draait — blijft onverkort staan.
+
+Ook nog open, en niet onafhankelijk hiervan: één inlogprompt of twee (zie
+`PORT-NOTES.md`). De variant "één prompt via Authelia-headers" bestaat alleen
+als de app een eigen backend krijgt die die headers kan lezen — dus alleen
+onder Path B.
+
+## Stand 2026-09-11 (2) — de keuze is Path C, en er is een bug gevonden
+
+Jelle duwde terug op beide opties, terecht: SQLite past slecht bij meerdere
+gebruikers met rij-niveau toegangsbeperking, en een vijf-container
+Supabase-stack is buiten proportie voor ~20 gebruikers als Authelia al
+iedereen authenticeert.
+
+Dat maakte een derde weg zichtbaar. Wat beschermd moest worden was nooit
+Supabase, maar dát de 31 RLS-policies en 8 triggers **in de database
+afgedwongen** blijven in plaats van applicatiecode te worden. Dat pleit voor
+Postgres, niet voor Supabase. En `auth.uid()` — waar al die policies op
+draaien — is geen Supabase-feature maar drie regels SQL over een
+request-scoped setting die elke JWT-validerende gateway vult.
+
+**Path C: kale Postgres + PostgREST + een kleine Authelia→JWT-shim.** Drie
+backend-containers in plaats van vijf. GoTrue en Kong vervallen — precies de
+onderdelen die dubbelop waren. In de sandbox end-to-end geverifieerd tegen
+synthetische data: 26/26 migraties draaien, `auth.uid()` resolvet uit een
+zelf-gemunte JWT, anonieme requests krijgen `[]`, en elke
+escalatiepoging als deelnemer wordt geblokkeerd precies zoals onder echt
+Supabase. `@supabase/supabase-js` blijft werken tegen kale PostgREST, dus alle
+`.from()`/`.rpc()`-aanroepen blijven ongewijzigd; alleen auth en storage
+moeten vervangen worden (~250 regels). Uitwerking in
+`jonkies-tody/PORT-NOTES.md`, reproductie in
+`jonkies-tody/docs/pathc-prototype/`.
+
+Daarmee vervalt ook de tweede open vraag: Authelia wordt de
+identity-provider, Google-login verdwijnt, dus één inlogprompt en geen
+Google-OAuth-client meer nodig.
+
+**En passant een echte bug gevonden die nú speelt**, los van de port:
+prijzen die een deelnemer inwisselt worden wél geregistreerd maar **niet
+afgeschreven**. `update_user_points()` doet een UPDATE op `profiles`, en die
+UPDATE triggert `protect_profile_columns()`, die `total_points` terugdraait
+zodra `is_admin(auth.uid())` onwaar is — bij een deelnemer dus altijd. Dat
+verklaart de vier "fix balances"-migraties in de historie: die herberekenden
+telkens het saldo zonder de oorzaak weg te nemen. Een geteste fix plus een
+read-only controlequery staan in
+`jonkies-tody/docs/proposed-fix-balance-drift.sql`, bewust níét in
+`supabase/migrations/`, zodat mergen van de PR niets aan de echte database
+verandert.
+
+De harde grens blijft staan. Alleen de vorm verandert: geen drie
+SQLite-vragen meer, maar één gewone `pg_dump`-snapshotroutine met een getest
+restore. Of dát de grens sluit, bepaalt Jelle.
+
+## Stand 2026-09-12 — Path C bevestigd en gebouwd
+
+Jelle heeft alle zes de open punten beantwoord: Path C, één inlogprompt
+(Authelia als identity provider, Google eruit), een nieuwe `family`-groep,
+`jonkies-tody.hopsakee.top`, en `pg_dump` met een getest restore als
+invulling van de harde grens.
+
+De stack is gebouwd en end-to-end geverifieerd tegen synthetische data — niets
+uitgerold, geen echte data aangeraakt. Drie containers: Postgres, PostgREST en
+een eigen Authelia→JWT-shim. De shim is de enige nieuwe security-kritische code
+en is ook zo getest, tegen een echte `caddy:2.8`: spoofen van `Remote-User`
+lukt niet (`copy_headers` overschrijft wat de client stuurt). Twee bevindingen
+veranderden het ontwerp: het "hardenen" door client-headers te strippen vóór
+`forward_auth` **breekt de gate** (verkeerde directive-volgorde, alles 401't),
+en `copy_headers` zet een header óók als de authorizer hem niet teruggaf — als
+letterlijke placeholder-tekst, die in een JWT-claim belandde voordat de shim
+erop controleerde.
+
+De echte `@supabase/supabase-js` draait ongewijzigd tegen kale PostgREST via de
+echte routing, dus alle `.from()`/`.rpc()`-aanroepen bleven staan. Een volledig
+gezinsscenario klopt: goedkeuren, punten toekennen, prijs inwisselen — 100 naar
+60, nul drift, met de balансfix erin.
+
+Back-up: script geschreven, écht gedraaid, en de dump teruggezet in een lege
+Postgres met gelijke saldi en gelijke rijaantallen over alle acht tabellen.
+`jonkies-tody/docs/BACKUP.md` legt uit waarom telefoons van gezinsleden niets
+bevatten om te back-uppen (de database staat op Hetzner, niet op het apparaat)
+en waarom de NAS trekt in plaats van dat de box duwt.
+
+Wat resteert vóór cutover staat in `jonkies-tody/PORT-NOTES.md`: de drift-query
+op het live project draaien, de back-up op de échte box installeren en één keer
+terugzetten (dát sluit de grens), Authelia-groep en -regels, de
+`hopsakee-server`-kant, en de datamigratie met behoud van UUID's plus de
+`authelia_user`-koppeling per gezinslid.
