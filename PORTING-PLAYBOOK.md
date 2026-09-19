@@ -1,9 +1,11 @@
 # Porting playbook
 
-Status: v2. Two Tier-A static ports done (hopsakee-decimal-finder / findjd —
-the pilot; ren-afstand — second app, same pattern reused unchanged), plus the
-first Tier-B app scoped and its container half built and verified
-(jonkies-tody — backend decision still open, see its `PORT-NOTES.md`).
+Status: v3. Two Tier-A static ports done (hopsakee-decimal-finder / findjd —
+the pilot; ren-afstand — second app, same pattern reused unchanged), and the
+first Tier-B port **completed end to end on the real box**: jonkies-tody is
+live on Hetzner with the family's real data migrated off Lovable and verified
+row-for-row (2026-09-19). Everything under "Tier-B cutover" below comes from
+that cutover, not from a sandbox.
 Every claim below is either VERIFIED (a real port confirmed it) or ASSUMED (it came
 from planning). Never promote an ASSUMED line to VERIFIED without a run that
 exercised it.
@@ -151,7 +153,7 @@ exercised it.
   `service_role` roles). 25 of jonkies-tody's 26 replayed cleanly first try.
   Two things this buys that reading the SQL does not: it proves the chain
   actually applies in filename order, and querying `pg_policies`/`pg_proc`/
-  `pg_trigger` afterwards gives the **net** final schema (31 policies, 11
+  `pg_trigger` afterwards gives the **net** final schema (28 policies in `public`, 11
   functions, 8 triggers) rather than a raw count of `CREATE` statements that
   later migrations have already dropped and replaced. Do this on every
   Tier-B port before estimating a rewrite.
@@ -164,10 +166,15 @@ exercised it.
 ## Tier-B backend pattern — VERIFIED (jonkies-tody)
 - **Supabase-exported apps do not need Supabase to keep their security model.**
   Verified end-to-end in a sandbox: the app's 8 tables, 11 functions, 8
-  triggers, 31 RLS policies and its `collect_prize` RPC all work unchanged
+  triggers, 28 RLS policies and its `collect_prize` RPC all work unchanged
   behind **plain Postgres + PostgREST + a JWT we mint ourselves** — no GoTrue,
   no Kong, no Storage service, no Studio. Three backend containers instead of
   five.
+  **Count correction, from the real box.** Earlier versions of this playbook
+  said 31 policies. The real number is **28 in `public`**, plus 4 on the
+  `storage.objects` stub. A sandbox tally is not authoritative; check the
+  live database with
+  `select count(*) from pg_policies where schemaname='public'`.
   The hinge is that `auth.uid()` is not a Supabase feature. It is three lines
   of SQL over a request-scoped setting that any JWT-validating gateway
   populates:
@@ -243,14 +250,218 @@ exercised it.
   is porting, and that fixing them belongs before the cutover rather than
   after.
 
+## Tier-B cutover — VERIFIED (jonkies-tody, real box, 2026-09-19)
+
+Everything above was proven in a sandbox. This section is what only appeared
+once the app was serving a browser and real family data had to move. Read it
+before scheduling the next Tier-B cutover; most of these cost a round each.
+
+### Get the data out of Lovable's dashboard, not over a live connection
+
+The plan assumed `pg_dump` against `db.<ref>.supabase.co`. That route is worse
+in three separate ways, all discovered the hard way:
+
+- **Supabase shows the database password exactly once, at project creation.**
+  There is no way to look it up later, only to reset it — and on a
+  Lovable-built app nobody ever saw it, because Lovable abstracts it away.
+- **Direct connections are IPv6-only** unless the project has the IPv4
+  add-on. A box without IPv6 must use the pooler host instead, and `pg_dump`
+  needs **session mode (5432)**, not transaction mode (6543).
+- A password with `@ : / #` in it has to be percent-encoded inside the URL,
+  and a mis-encoded password fails identically to a wrong one.
+
+Lovable's dashboard exports the whole project as two zips, and that sidesteps
+all of it: a **`.backup`** (pg_dump CUSTOM format, zstd) and the storage
+bucket's files. Confirm the format with `head -c 5` → `PGDMP`.
+
+**Restore it into a throwaway container and point the existing `01-export.sh`
+at that**, rather than writing anything that parses the archive. The verified
+half of the pipeline — the import and its guards — then stays verified, and
+the source is a container on localhost so the password and IPv6 problems
+evaporate. The export script needs one addition for this: a `PG_NETWORK` env
+var so its helper containers join the scratch server's docker network.
+
+### `pg_restore --schema=X` does not create schema X
+
+`--schema=auth` restored **nothing**: 247 objects all failing with
+`schema "auth" does not exist`. `--schema` selects objects *in* that schema,
+and `CREATE SCHEMA auth` is in no schema — its TOC entry reads
+`SCHEMA - auth`, where the `-` **is** the schema field. So the filter excludes
+the one statement everything else depends on.
+
+`public` survives this silently because a fresh database already has it, which
+is exactly what makes the failure look app-specific rather than structural.
+
+So: `CREATE SCHEMA IF NOT EXISTS auth;` before restoring, alongside the
+extensions the app's defaults need (`uuid-ossp`, `pgcrypto`).
+
+**And the restore is expected to print errors regardless** — the archive names
+Supabase's own roles (`supabase_admin`, `supabase_auth_admin`). `--no-owner
+--no-privileges` removes most of it. Never judge the restore by its output;
+judge it by counting rows afterwards. A real failure hid in that noise here
+precisely because the runbook said to expect noise.
+
+**Constraints may not survive either.** Because `public` was restored while
+`auth` did not exist, `profiles`' FK to `auth.users` was never created — so
+`ON DELETE CASCADE` did not fire later and deleting an identity left its
+profile orphaned. Check orphans explicitly rather than trusting a cascade:
+
+```sql
+SELECT (SELECT count(*) FROM public.profiles p
+          WHERE NOT EXISTS (SELECT 1 FROM auth.users u WHERE u.id = p.id)) AS orphans;
+```
+
+### Source and target Postgres versions will not match
+
+The Supabase project was **17.6**; the box runs **15**. A `pg_dump` new enough
+to read the source emits preamble lines 15 rejects, and the import runs under
+`ON_ERROR_STOP=1`, so one unknown line aborts the whole load:
+
+- `SET transaction_timeout` — PostgreSQL 17+
+- `\restrict` / `\unrestrict` — psql meta-commands, recent minors only
+  (emitted by `pg_dump` 16 as well)
+
+Strip them; both are session hygiene with no bearing on the data. **The
+trailing space in each pattern is load-bearing** — without it the same match
+eats `\.`, the COPY terminator, silently truncating every table while the
+restore still reports success:
+
+```
+/^(SET transaction_timeout|\\restrict |\\unrestrict )/d
+```
+
+Relatedly: **the box has no `postgresql-client`**, and does not need one. Run
+`pg_dump`/`psql` from a container, matching the image to the **source** major
+version — `pg_dump` refuses a server newer than itself. Note `pg_dump -f`
+writes the file *inside* the container; stream to the host instead.
+
+### Real family data contains duplicate identities
+
+The export held **7 identities and 6 profiles**, not the 5 and 5 expected.
+Two people had signed up twice in the app's first week. Worse, for one of them
+the account displaying as a *different person's name* was the real one — 114
+points and a full ledger — while the account carrying his own name was empty.
+
+So **reconcile identities before importing**, and note the danger: every table
+is `REFERENCES public.profiles(id) ON DELETE CASCADE`, so deleting the wrong
+row of a duplicate pair takes the ledger, activity log, prizes and
+contributions with it. Prove a duplicate is empty first:
+
+```sql
+SELECT p.display_name, p.total_points,
+       (SELECT count(*) FROM public.point_transactions t WHERE t.user_id=p.id) AS tx,
+       (SELECT count(*) FROM public.activity_logs a      WHERE a.user_id=p.id) AS activity
+  FROM public.profiles p ORDER BY p.display_name;
+```
+
+Do the reconciliation **in the scratch container**, so the source project is
+never modified and a mistake costs only a re-restore. Then **re-export** — do
+not hand-edit `identities.tsv`, which is only half the export; the data dump
+still holds the rows you removed, and the mismatch produces exactly the
+orphans the verify step exists to catch.
+
+Two more identity notes:
+- **Read the identity provider's usernames from its own config**, never infer
+  them from display names. Authelia's `users_database.yml` had `famke` with
+  displayname `Famke`, while the app's profile said `Famke de Jong`. A wrong
+  username is the worst failure mode available: the person logs in
+  successfully and lands on a brand-new empty profile, with no error anywhere.
+- Budget a human round-trip for the mapping. Only the family can say which
+  account is whose; no script can check that a mapping is *right*, only that
+  it exists.
+
+### Things that only fail in a browser
+
+Two production-breaking bugs passed every `curl` check.
+
+- **CORS forces the API to be same-origin, not a sibling subdomain.** A
+  preflight `OPTIONS` carries no cookies by spec, so a `forward_auth` gate
+  cannot authorize it and the browser sees a bare `TypeError: Failed to
+  fetch`. **`curl` never reveals this** — it sends no `Origin`, so CORS is
+  never engaged and every command-line check passes. Put the API under the
+  app's own hostname (`handle_path /rest/v1/*`, `handle /auth/*`,
+  `handle /storage/*`) rather than on `<app>-api.hopsakee.top`.
+- **PostgREST has no `_FILE` convention.** The rest of the box uses
+  `*_FILE=/run/secrets/x`; PostgREST's own syntax is
+  `PGRST_JWT_SECRET=@/run/secrets/jwt_secret`. Configured the box's way it
+  ignores the variable **in silence**, answers HTTP 500 `PGRST300 "Server
+  lacks JWT secret"` to every authenticated request, and still passes a
+  container healthcheck. Add a deploy guard that proves the secret loaded —
+  a garbage bearer token must be rejected with **401**, not 500:
+
+  ```bash
+  docker exec <shim> node -e \
+    'fetch("http://<rest>:3000/",{headers:{Authorization:"Bearer not.a.token"}})
+       .then(r=>console.log(r.status)).catch(()=>console.log("000"))'
+  ```
+
+  It needs no secret of its own and never touches the database.
+
+**Generalise both:** a Tier-B port's verification must include loading the app
+in a real browser before it is called done. And check the UI distinguishes
+*error* from *empty* — this app's admin page rendered a failed query
+identically to "no pending users", which is what hid the PGRST300 bug for an
+hour while the queue actually had someone in it.
+
+### What the backup gate actually is
+
+`MIGRATION-PLAN.md`'s hard gate is a tested restore. Two refinements from
+doing it for real:
+
+- **`RESTORE OK` is the gate** — a snapshot replaying into a clean Postgres
+  under `ON_ERROR_STOP=1`. No state of the live database can affect that.
+- **Comparing restored row counts against *live* is a separate freshness
+  check**, and it is only meaningful if the snapshot was taken moments ago.
+  Run it against a stale snapshot mid-cutover — when the database is being
+  reset on purpose — and it reports `MISMATCH` on every table and declares a
+  perfect backup broken. Take a fresh snapshot as the first line of the test.
+- Run the gate against **test data, before real data exists**. An empty
+  restore proves nothing, and waiting for real data inverts the point.
+- **Image/file volumes are not in any database dump.** Back them up
+  separately, and move them separately at cutover — the rows arrive intact
+  and every image renders blank otherwise.
+
+### Operational notes
+
+- **The deploy does `git reset --hard origin/main` on the app checkout.** So a
+  fix must be *merged* before deploying; a manual `git pull` in that directory
+  is at best redundant and creates drift the next deploy silently discards.
+  Two rounds were lost to running a script whose fix was still sitting in an
+  unmerged PR.
+- **`wait_healthy` only checks the first service in a compose file.** A
+  multi-container stack can report a green deploy with a broken dependency.
+- **Two shell-script lessons that each cost a round**, and generalise well
+  beyond this port:
+  - Under `set -e`, a failed command substitution makes the **assignment**
+    fail, so `x=$(cmd)` exits the script *before* any `[ -z "$x" ]` check can
+    report anything. Use `|| true` on the assignment.
+  - Never send a probe's stderr to `/dev/null`. An unreachable host, a
+    rejected password, a paused project and a stopped docker daemon all look
+    identical once the only diagnostic is discarded. Capture it and print it.
+- **Bare SQL blocks in a runbook get pasted into a shell.** Write them as a
+  runnable `docker exec ... psql <<SQL` heredoc, or expect
+  `GRANT: command not found`.
+
 ## Not yet answered
 - SQLite backup routine on the box. **No longer blocking jonkies-tody** — that
   app's backend decision landed on Postgres. Still open for any app that ends
   up on SQLite.
 - Whether one SQLite file can safely serve more than one container. Same
   status: not blocking jonkies-tody any more.
-- Whether a `pg_dump` snapshot routine with a tested restore is what Jelle
-  accepts as closing the hard gate for Postgres-backed apps.
+- ~~Whether a `pg_dump` snapshot routine with a tested restore is what Jelle
+  accepts as closing the hard gate for Postgres-backed apps.~~ **Answered:
+  yes.** Built, scheduled by cron on the box, and restored for real into a
+  throwaway Postgres with row counts and balances compared — see "What the
+  backup gate actually is" above for the two refinements that came out of
+  running it. Real data was migrated only after it passed.
+- **Off-box backup transport is still open** for every app.
+  jonkies-tody's snapshots exist on the Hetzner box and restore correctly,
+  but nothing pulls them off it yet, so the box remains a single point of
+  failure for the family's data. The design is settled (the Mac Mini pulls
+  and drops the files into a Synology Drive folder, whose version history is
+  the retention mechanism) and the script is written in `hoggle-macmini`;
+  what is left is the firewall/key/scheduling work on the Mac. Do not treat
+  a Tier-B port as finished until this exists for it.
 - ~~Which backend jonkies-tody talks to.~~ **Answered**: neither self-hosted
   Supabase nor a SQLite rewrite, but plain Postgres + PostgREST + an
   Authelia→JWT shim (see the Tier-B pattern above, and

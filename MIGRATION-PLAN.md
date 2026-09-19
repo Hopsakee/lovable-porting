@@ -228,3 +228,55 @@ op het live project draaien, de back-up op de échte box installeren en één ke
 terugzetten (dát sluit de grens), Authelia-groep en -regels, de
 `hopsakee-server`-kant, en de datamigratie met behoud van UUID's plus de
 `authelia_user`-koppeling per gezinslid.
+
+---
+
+## Stand 2026-09-19 — `jonkies-tody` is live met echte data
+
+De eerste Tier-B-app draait op de Hetzner-box en de gezinsdata staat er op.
+Niet Path A (de aanbeveling hierboven) en niet SQLite, maar **Path C**: kale
+Postgres + PostgREST + een eigen Authelia→JWT-shim. Drie containers in plaats
+van vijf, met alle RLS-policies, triggers en de RPC ongewijzigd in de database.
+De redenering staat in `jonkies-tody/PORT-NOTES.md`, de uitvoering in
+`jonkies-tody/docs/CUTOVER-RUNBOOK.md`.
+
+De migratie zelf is regel-voor-regel geverifieerd: 5 identiteiten, alle negen
+teltabellen gelijk aan de bron, elk saldo gelijk, geen drift in het grootboek,
+geen weeskinderen.
+
+### De harde grens is gesloten — voor Postgres-apps, en niet helemaal
+
+De `pg_dump`-snapshotroutine bestaat, draait via cron op de box, en is **écht
+teruggezet**: een snapshot in een lege Postgres-container gezet en de rijtellingen
+en saldi vergeleken. Dat gebeurde met testdata, vóórdat er echte data op de box
+stond — precies de volgorde die de grens bedoelt.
+
+Twee dingen die pas bij het echte uitvoeren bleken, en die in
+`PORTING-PLAYBOOK.md` staan:
+
+- `RESTORE OK` is de grens. De vergelijking met de *live* database is een
+  aparte versheidscontrole, en die is alleen zinnig tegen een net gemaakte
+  snapshot. Tegen een oude snapshot midden in een cutover meldt hij
+  `MISMATCH` op elke tabel en verklaart hij een perfecte back-up kapot.
+- Afbeeldingen en andere bestandsvolumes zitten in géén enkele database-dump.
+  Apart back-uppen, en bij de cutover apart verplaatsen.
+
+**Wat nog wél openstaat:** de snapshots verlaten de box niet. Ze bestaan, ze
+zijn ingepland en ze zijn herstelbaar, maar zolang er niets ze ophaalt blijft
+de box een single point of failure voor de gezinsdata. Het ontwerp ligt vast
+(de Mac Mini haalt ze op en zet ze in een Synology Drive-map, waarvan de
+versiegeschiedenis de retentie is) en het script staat in `hoggle-macmini`;
+het firewall-, sleutel- en planningswerk op de Mac moet nog. Beschouw een
+Tier-B-port niet als af voordat dit er is.
+
+De drie SQLite-vragen hierboven zijn hiermee niet beantwoord maar
+niet-van-toepassing voor déze app. Ze blijven onverkort staan voor elke app
+die alsnog op SQLite uitkomt.
+
+### Correctie op de cijfers hierboven
+
+Netto **28 RLS-policies in `public`** (plus 4 op de `storage.objects`-stub),
+niet de 31 die hierboven staan. Die 31 kwam uit een sandbox-telling; de
+draaiende database is leidend:
+`select count(*) from pg_policies where schemaname='public'`.
+De overige cijfers — 8 tabellen, 4 enums, 11 functies, 8 triggers — kloppen.
