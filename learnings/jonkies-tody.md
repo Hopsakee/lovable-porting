@@ -1,13 +1,25 @@
 # Port learnings — jonkies-tody
 
-Date: 2026-09-11
+Date: 2026-09-11 (scoping) — 2026-09-19 (cutover completed)
 Ported by: Claude Code on the web
-Tier: B (first one) — **scoping session only, not a completed port**
+Tier: B (first one) — **completed: live on Hetzner with the family's real data**
 
-Status: the container half is built and verified; the backend architecture
-decision is **answered** — Path C (plain Postgres + PostgREST + an
-Authelia→JWT shim), prototyped and verified against synthetic data. See `jonkies-tody/PORT-NOTES.md`
-for the decision memo itself. This file is only the process learnings.
+Status: done. Path C (plain Postgres + PostgREST + an Authelia→JWT shim) was
+prototyped against synthetic data in the scoping session, then built, deployed
+and cut over on the real box. The family's data moved off Lovable on
+2026-09-19 and verified row-for-row: 5 identities, all nine table counts
+identical to the source, every balance identical, no ledger drift, no orphans.
+See `jonkies-tody/PORT-NOTES.md` for the decision memo and
+`jonkies-tody/docs/CUTOVER-RUNBOOK.md` for the procedure as actually executed.
+
+Everything above the "real server" heading below is from the scoping session
+and is left as it was written. The cutover section is the new material.
+
+**One correction to those scoping notes, flagged here rather than rewritten
+into them:** the net policy count is **28 in `public`** (plus 4 on the
+`storage.objects` stub), not the 31 stated twice below. The sandbox tally was
+wrong; the live database is authoritative —
+`select count(*) from pg_policies where schemaname='public'`.
 
 ## What I assumed that was wrong
 
@@ -127,4 +139,100 @@ subdomain name, and whether a `pg_dump` routine closes the hard gate.
 
 ## What only showed up on the real server
 
-(Jelle fills this in after deploying. Leave empty.)
+Written after the cutover. The generalisable half is promoted into
+`PORTING-PLAYBOOK.md` under "Tier-B cutover"; this is the narrative, including
+the parts that were my mistakes.
+
+### The two bugs that passed every sandbox check
+
+Both were mine, both were design errors rather than typos, and both were
+invisible to `curl`.
+
+**The API cannot live on its own subdomain.** I put it on
+`jonkies-api.hopsakee.top` behind the same Authelia gate and verified it
+thoroughly — with `curl`. The browser then failed with a bare `TypeError:
+Failed to fetch`. A CORS preflight `OPTIONS` carries no cookies by spec, so
+`forward_auth` cannot authorize it. `curl` sends no `Origin`, so **none of my
+verification ever engaged CORS at all.** The fix was to move the API
+same-origin under the app's own hostname. The lesson is not about CORS: it is
+that a verification method which cannot exercise the failure mode is not
+verification, and I had no browser in the loop until Jelle was the browser.
+
+**PostgREST has no `_FILE` convention.** The Path C prototype used
+`-e PGRST_JWT_SECRET="$SECRET"` literally and worked. When the prototype became
+compose files I wrote `PGRST_JWT_SECRET_FILE=`, matching every other service on
+the box — and never re-tested that shape. PostgREST ignored it silently,
+answered HTTP 500 `PGRST300` to every authenticated request, and **passed the
+container healthcheck**, so the deploy was green. The correct syntax is
+`PGRST_JWT_SECRET=@/run/secrets/jwt_secret`.
+`deploy-jonkies-tody.sh` now carries a guard that proves the secret actually
+loaded — a garbage bearer token must come back 401, not 500. It needs no
+secret of its own and never touches the database.
+
+The pattern joining the two: **I changed a thing after verifying it, and
+treated the earlier verification as still valid.** Both times the change was
+"make it consistent with the rest of the box".
+
+### The UI hid one of them
+
+The admin page rendered a *failed* query identically to an empty list — the
+same green check and "Geen wachtende gebruikers". `usePendingProfiles()` throws
+on a PostgREST error, react-query leaves `data` undefined, and the
+`!data || length === 0` branch swallowed it. So while PGRST300 was breaking
+every request, the screen calmly reported that nobody was waiting, when
+somebody was. Fixed; worth checking every list screen in a ported app for the
+same shape.
+
+### The migration source was not what the plan assumed
+
+The plan said `pg_dump` against `db.<ref>.supabase.co`. On a Lovable-built app
+that is close to unusable: Supabase shows the database password once at
+project creation and Lovable abstracts it away, so nobody has ever seen it;
+direct connections are IPv6-only without the IPv4 add-on; and the pooler
+alternative needs session mode for `pg_dump`.
+
+Lovable's dashboard export — a `.backup` (pg_dump CUSTOM, zstd, from
+PostgreSQL 17.6) plus a zip of the storage bucket — sidesteps all three. The
+approach that worked was to **restore it into a throwaway container and point
+the existing `01-export.sh` at that**, so the tested import and its guards
+stayed untouched and the only new code was standing up a scratch server.
+
+Three traps in that route, all now in the playbook: `pg_restore --schema=X`
+does not create schema X (247 objects failed on one line's absence);
+the source/target version gap means the dump must be sanitised for the older
+target; and the box has no `postgresql-client` at all.
+
+### Real data is messier than any test set
+
+The export held **7 identities and 6 profiles**, not the 5 and 5 everyone
+expected. Two children had signed up twice in the app's first week — and for
+one of them, the account displaying as *a different name entirely* was the
+real one, carrying 114 points and a full ledger, while the account with his
+own name was empty.
+
+Getting that backwards would have cost a child 114 points and their whole
+history, because every table cascades from `profiles(id)`. What prevented it
+was refusing to delete anything before a query proved which row was empty.
+
+No script can check this. `02-import.sh` verifies that everyone has *a*
+mapping, never that it is the *right* one. **Budget a human round-trip for
+identity reconciliation on every Tier-B port**, and do the cleanup in the
+scratch container so the source is never touched.
+
+### What I would do differently
+
+1. **Load the app in a browser before calling any Tier-B port verified.** Both
+   production bugs were browser-only.
+2. **Re-verify anything I changed after verifying it**, especially changes
+   whose justification is consistency rather than correctness.
+3. **Ask for the identity list early.** It is the one input no amount of
+   tooling can validate, and it was available from day one.
+4. **Expect the export to disagree with the family's own headcount**, and ask
+   about duplicates before writing the mapping rather than after.
+
+### Still open
+
+Off-box backup transport. Snapshots exist on the Hetzner box, are scheduled,
+and restore correctly — but nothing pulls them off it, so the box is still a
+single point of failure for the family's data. Script written in
+`hoggle-macmini`; the firewall/key/scheduling work on the Mac remains.
