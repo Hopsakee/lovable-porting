@@ -10,6 +10,9 @@ Every claim below is either VERIFIED (a real port confirmed it) or ASSUMED (it c
 from planning). Never promote an ASSUMED line to VERIFIED without a run that
 exercised it.
 
+This file is about **how** to port. For **which** apps, in what order, and what
+was decided about each, see [`PORT-SCOPE.md`](PORT-SCOPE.md).
+
 ## Target pattern
 - VERIFIED (hopsakee-decimal-finder pilot): static apps build with Node in a
   throwaway stage, then serve from Caddy in a shared final-stage base image

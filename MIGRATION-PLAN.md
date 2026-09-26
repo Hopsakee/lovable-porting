@@ -1,4 +1,11 @@
-# Migrate 8 Lovable apps to self-managed Hetzner (hopsakee.top)
+# Migrate Jelle's Lovable apps to self-managed Hetzner (hopsakee.top)
+
+> **Scope moved on 2026-09-26.** This document was written for 8 apps. The
+> actual list is **14 to port, 2 postponed and 1 dropped**, and it lives in
+> **[`PORT-SCOPE.md`](PORT-SCOPE.md)** — that file wins wherever this one
+> disagrees about which apps or in what order. Everything below is kept as the
+> original design and its dated status sections; the *pattern* is still current,
+> the *inventory* is not.
 
 ## Context
 
@@ -264,8 +271,10 @@ Twee dingen die pas bij het echte uitvoeren bleken, en die in
 **Wat nog wél openstaat:** de snapshots verlaten de box niet. Ze bestaan, ze
 zijn ingepland en ze zijn herstelbaar, maar zolang er niets ze ophaalt blijft
 de box een single point of failure voor de gezinsdata. Het ontwerp ligt vast
-(de Mac Mini haalt ze op en zet ze in een Synology Drive-map, waarvan de
-versiegeschiedenis de retentie is) en het script staat in `hoggle-macmini`;
+(de Mac Mini haalt ze op en zet ze in `~/Drive-bup`, de bron van een
+**Backup**-taak die alleen omhoog gaat — nadrukkelijk *geen* Drive-syncmap, want
+een lokale verwijdering daarin loopt door naar de NAS; de versiegeschiedenis op
+de NAS is de retentie) en het script staat in `hoggle-macmini`;
 het firewall-, sleutel- en planningswerk op de Mac moet nog. Beschouw een
 Tier-B-port niet als af voordat dit er is.
 
@@ -280,3 +289,52 @@ niet de 31 die hierboven staan. Die 31 kwam uit een sandbox-telling; de
 draaiende database is leidend:
 `select count(*) from pg_policies where schemaname='public'`.
 De overige cijfers — 8 tabellen, 4 enums, 11 functies, 8 triggers — kloppen.
+
+---
+
+## Stand 2026-09-26 — de scope is groter en de volgorde is anders
+
+Jelle heeft de lijst zelf vastgesteld. Hij staat, met de projectlinks, in
+**[`PORT-SCOPE.md`](PORT-SCOPE.md)**; dat bestand is voortaan leidend voor
+*welke* apps en *in welke volgorde*. Hier alleen wat er verandert ten opzichte
+van het ontwerp hierboven.
+
+**Veertien apps, geen acht.** Drie daarvan draaien al (Johnny Finder,
+Run Distance Planner, Point Pals). Elf moeten nog. De app-inventaris hierboven
+dekte maar een deel van wat hij wil verplaatsen.
+
+**`hopsakee-prompts` gaat nooit.** Obsoleet: Prompt Keeper SQLite is de nieuwere
+versie van hetzelfde idee. Daarmee vervalt ook de keuze hierboven om juist die
+app als Tier-B-pilot te nemen — die pilot is inmiddels sowieso ingehaald door
+`jonkies-tody`, die als eerste Tier-B-app echt is overgezet.
+
+**Prompt Keeper SQLite en Skill keep zijn uitgesteld**, niet om technische
+redenen maar omdat Jelle eerst wil uitzoeken hoe hij prompts en skills
+überhaupt wil opslaan. Niet inplannen als goedkope tussendoor-port: de kans
+bestaat dat we iets verplaatsen dat hij gaat vervangen.
+
+**My Project Hub gaat als eerste.** Dat draait de volgorde van "oplopend risico"
+hierboven om, want die zette hem juist achteraan als de architecturale
+buitenbeentje — SSR op Cloudflare Workers in plaats van een statische SPA, met
+Supabase Storage en drie externe API's. Jelles keuze, in het volle besef
+daarvan. Twee gevolgen die je maar beter kunt verwachten dan ontdekken: hij is
+de eerste app die een *runtime*-container nodig heeft in plaats van het
+statische base-image, en Path C heeft geen Supabase Storage, dus zijn
+cover-afbeeldingen moeten ergens anders heen.
+
+**Tweedelezer hulpje gaat naar Google.** Jelle heeft daar een account. Dus niet
+OpenAI, en niet de Azure-AI-Foundry-variant. Let op: er bestaan twee Lovable-
+projecten met die naam; `c6598aeb` hoort bij de lijst, `3b081154`
+(`tweedelezer-hulpje-azurefoundry`) niet. Het blijft een echte herschrijving van
+de modelaanroep, geen env-wissel, en de Nederlandse uitvoerkwaliteit moet
+gecontroleerd worden vóór de omschakeling.
+
+**Open: waar de repositories staan.** Van deze veertien apps heeft alleen het
+drietal dat al geport is een repository onder `Hopsakee` — geteld op 2026-09-26
+tegen alle 41 repositories die dat account laat zien. Jelle zegt dat ze
+allemaal naar zijn GitHub gesynchroniseerd zijn; dat kan allebei waar zijn als
+ze onder een ander account of een andere organisatie staan. Tot dat uitgezocht
+is, is het Lovable-project-id de betrouwbare verwijzing en is de repository per
+app iets om aan het begin van die port vast te stellen. De zin bovenaan dit
+document dat alle apps "live on GitHub under `Hopsakee`" staan, klopt niet meer
+voor de huidige scope.
