@@ -73,6 +73,38 @@ before cutting over.
 **Prompt storage and skill storage are Jelle's research, not ours.** See
 Postponed above.
 
+## Starting a port
+
+`prompts/START-A-PORT.md` is the starting prompt: fill four placeholders and
+paste it into a fresh session. It carries the constraints and the gates, which
+are the first things to erode when each session writes its own opening.
+
+## What is known about the remaining apps
+
+Checked 2026-09-26 through the Lovable connector. **Every remaining app has a
+database enabled**, so there is no static Tier-A step left in the queue — the
+two apps that might have been (Prompt Keeper SQLite, Skill keep) are the two
+that are postponed. The next port is a second Path C app whether or not it is
+meant to be a gentle one.
+
+| App | Live schema | Notes |
+|---|---|---|
+| Lan Party Planner | 6 tables, 21 policies, `profiles` + `user_roles`, ~370 rows | same shape as `jonkies-tody`, smaller, and the data is not precious |
+| Idee-blaffer | 10 tables, ~20 policies, its own access-code auth | `access_codes`, `organizations`, `departments`, `user_sessions` |
+| Carlijn's stappenmaker | database enabled, contents not checked | |
+| Style Shopper Pro | database enabled, contents not checked | |
+| Alinea Advies | database enabled, contents not checked | |
+| Scene Weaver | database enabled, contents not checked | |
+| Minecraft Mob Maker | not checked | AI generation, expect an edge function and a model key |
+| Game Key Hub | not checked | custom images — expect file storage |
+| Learn systems and architecture | not checked | markdown in/out, drawings |
+| Tweedelezer hulpje | per `MIGRATION-PLAN.md`: 11 migrations, 2 edge fns | plus the Google rewrite |
+| My Project Hub | per `MIGRATION-PLAN.md`: SSR, Storage, 3 external APIs | the outlier |
+
+"Database enabled" is not "database used" — Lovable provisions one per project
+whether or not a code path touches it. Confirm with a live count at the start
+of each port rather than trusting this table.
+
 ## Carry-over constraints that still apply
 
 - **The hard gate**: no app with real data goes live before a snapshot routine
