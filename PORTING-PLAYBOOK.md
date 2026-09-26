@@ -405,8 +405,8 @@ hour while the queue actually had someone in it.
 
 ### What the backup gate actually is
 
-`MIGRATION-PLAN.md`'s hard gate is a tested restore. Two refinements from
-doing it for real:
+`MIGRATION-PLAN.md`'s hard gate is a tested restore. What doing it for real
+added to that:
 
 - **`RESTORE OK` is the gate** — a snapshot replaying into a clean Postgres
   under `ON_ERROR_STOP=1`. No state of the live database can affect that.
@@ -420,6 +420,21 @@ doing it for real:
 - **Image/file volumes are not in any database dump.** Back them up
   separately, and move them separately at cutover — the rows arrive intact
   and every image renders blank otherwise.
+- **A backup destination must not be a two-way sync folder.** Jelle's rule,
+  and it decides where the off-box copy lands. A Synology Drive **sync**
+  share (`~/Drive`) propagates a local deletion to the NAS, so a copy there
+  is a *replica*, not a backup: whatever deletes the local file deletes the
+  remote one. The destination has to be the source of an upload-only
+  **Backup** task (`~/Drive-bup`, `sync_direction=1`,
+  `ignore_local_remove=1`), whose version store is what holds the history.
+  This matters more than it looks, because the snapshots are deliberately
+  **one undated file per artifact, overwritten in place** — the NAS version
+  history *is* the retention mechanism, so pointing the pull at a sync share
+  leaves no retention at all. When a backup path moves, "is the new
+  destination still the upload-only Backup source?" is the first thing to
+  re-check, and it is worth a probe rather than a memory: every destination
+  in these scripts is a `${VAR:-default}` read, so an override in a plist or
+  a compose file can move it without touching the default anyone greps for.
 
 ### Operational notes
 
@@ -441,6 +456,19 @@ doing it for real:
 - **Bare SQL blocks in a runbook get pasted into a shell.** Write them as a
   runnable `docker exec ... psql <<SQL` heredoc, or expect
   `GRANT: command not found`.
+- **Fetch `origin/main` before writing a change — in every repo the change
+  touches, not just the one you are working in.** Asked to move the backup
+  paths to `~/Drive-bup`, I wrote a complete set of edits for the Mac-side
+  repo from a clone two days stale. `origin/main` already had all of it, and
+  had it with the *correct* rationale where mine had the reasoning backwards:
+  I had asked "is `~/Drive-bup` a sync folder?", been told yes, and built on
+  that, when the whole point of the move is that it is **not** one. The work
+  was discarded rather than pushed as a duplicate. A multi-repo port means
+  more than one clone drifts, and a stale one does not announce itself — it
+  reads as a repo where the work simply has not been done yet.
+- **Do not confuse an open PR with work owed.** A docs-only PR in a repo with
+  no CI cannot change state without the human; a scheduled re-check of it
+  produces nothing but noise. Poll something only when it can move on its own.
 
 ## Not yet answered
 - SQLite backup routine on the box. **No longer blocking jonkies-tody** — that
@@ -458,10 +486,12 @@ doing it for real:
   jonkies-tody's snapshots exist on the Hetzner box and restore correctly,
   but nothing pulls them off it yet, so the box remains a single point of
   failure for the family's data. The design is settled (the Mac Mini pulls
-  and drops the files into a Synology Drive folder, whose version history is
-  the retention mechanism) and the script is written in `hoggle-macmini`;
-  what is left is the firewall/key/scheduling work on the Mac. Do not treat
-  a Tier-B port as finished until this exists for it.
+  and drops one undated file per artifact into `~/Drive-bup/jonkies-tody/`,
+  the source of an upload-only Synology **Backup** task — *not* a Drive sync
+  share; see the destination rule under "What the backup gate actually is")
+  and the script is written in `hoggle-macmini`; what is left is the
+  firewall/key/scheduling work on the Mac. Do not treat a Tier-B port as
+  finished until this exists for it.
 - ~~Which backend jonkies-tody talks to.~~ **Answered**: neither self-hosted
   Supabase nor a SQLite rewrite, but plain Postgres + PostgREST + an
   Authelia→JWT shim (see the Tier-B pattern above, and

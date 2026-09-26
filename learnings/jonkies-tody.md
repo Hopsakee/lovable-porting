@@ -229,10 +229,38 @@ scratch container so the source is never touched.
    tooling can validate, and it was available from day one.
 4. **Expect the export to disagree with the family's own headcount**, and ask
    about duplicates before writing the mapping rather than after.
+5. **Fetch every repo the change touches before writing a line of it.** This
+   port spans four repos, and the one I reached for last was two days stale.
+   See "The backup destination moved" below.
+
+### The backup destination moved, and both halves of that were a lesson
+
+Jelle moved the Mac-side backup folder from `~/Drive/Backup` to `~/Drive-bup`
+and asked what that meant for the code and the deploy.
+
+**The rule behind the move** is the part worth carrying forward: no backup
+lives in a two-way sync folder. `~/Drive` is a Synology Drive *sync* share, so
+a local deletion propagates to the NAS and the copy there is a replica, not a
+backup. `~/Drive-bup` is the source of an upload-only *Backup* task
+(`sync_direction=1`, `ignore_local_remove=1`). That is load-bearing here
+precisely because these snapshots are one undated file per artifact,
+overwritten in place — the NAS version store *is* the retention, so a sync
+share would have left none.
+
+**How I got there was the other lesson.** I asked "is `~/Drive-bup` a Drive
+sync folder?", was told yes, and wrote a full set of edits on that basis —
+from a clone two days stale. `origin/main` already carried the whole change,
+dated 2026-09-20, with the rationale the right way round: `~/Drive-bup` is
+deliberately *not* a sync folder. I discarded my version rather than push a
+duplicate built on an inverted premise. Two things to keep: fetch before
+building, in every repo the change touches; and when a one-word answer is the
+hinge of the design, confirm it against the repo instead of the conversation.
 
 ### Still open
 
 Off-box backup transport. Snapshots exist on the Hetzner box, are scheduled,
-and restore correctly — but nothing pulls them off it, so the box is still a
-single point of failure for the family's data. Script written in
-`hoggle-macmini`; the firewall/key/scheduling work on the Mac remains.
+and restore correctly — but the Mac-side pull is not yet proven running
+against the real box, so the box is still a single point of failure for the
+family's data. Script written in `hoggle-macmini` and now pointed at
+`~/Drive-bup/jonkies-tody/`; the firewall/key/scheduling work on the Mac
+remains.
