@@ -73,6 +73,44 @@ before cutting over.
 **Prompt storage and skill storage are Jelle's research, not ours.** See
 Postponed above.
 
+## Starting a port
+
+`prompts/START-A-PORT.md` is the starting prompt: fill four placeholders and
+paste it into a fresh session. It carries the constraints and the gates, which
+are the first things to erode when each session writes its own opening.
+
+## What is known about the remaining apps
+
+Checked 2026-09-26 through the Lovable connector — which was the wrong first
+instrument: the source of truth for a port is the app's **GitHub repository**
+(its migrations, its `supabase/functions/`, its client code), and a live count
+confirms what the migrations claim. Use the connector only to settle a question
+the repository cannot answer. The numbers below are kept because they are real,
+not because that was the right way to get them.
+
+**Every remaining app has a database enabled**, so there is no static Tier-A
+step left in the queue — the two apps that might have been (Prompt Keeper SQLite, Skill keep) are the two
+that are postponed. The next port is a second Path C app whether or not it is
+meant to be a gentle one.
+
+| App | Live schema | Notes |
+|---|---|---|
+| Lan Party Planner | 6 tables, 21 policies, `profiles` + `user_roles`, ~370 rows | same shape as `jonkies-tody`, smaller, and the data is not precious |
+| Idee-blaffer | 10 tables, ~20 policies, its own access-code auth | `access_codes`, `organizations`, `departments`, `user_sessions` |
+| Carlijn's stappenmaker | database enabled, contents not checked | |
+| Style Shopper Pro | database enabled, contents not checked | |
+| Alinea Advies | database enabled, contents not checked | |
+| Scene Weaver | database enabled, contents not checked | |
+| Minecraft Mob Maker | not checked | AI generation, expect an edge function and a model key |
+| Game Key Hub | not checked | custom images — expect file storage |
+| Learn systems and architecture | not checked | markdown in/out, drawings |
+| Tweedelezer hulpje | per `MIGRATION-PLAN.md`: 11 migrations, 2 edge fns | plus the Google rewrite |
+| My Project Hub | per `MIGRATION-PLAN.md`: SSR, Storage, 3 external APIs | the outlier |
+
+"Database enabled" is not "database used" — Lovable provisions one per project
+whether or not a code path touches it. Confirm with a live count at the start
+of each port rather than trusting this table.
+
 ## Carry-over constraints that still apply
 
 - **The hard gate**: no app with real data goes live before a snapshot routine
@@ -86,18 +124,41 @@ Postponed above.
   port. Read it before starting the next one; it is where the next app's
   avoidable rounds are already written down.
 
-## Open item — where the repositories are
+## The GitHub repositories — this is what you port from
 
-Only four of these apps have a repository under the `Hopsakee` GitHub account:
-`findjd`, `ren-afstand`, `jonkies-tody` and the port target
-`hopsakee-decimal-finder`. Checked 2026-09-26 against all 41 repositories that
-account exposes; none of the other twelve apps appears under any recognisable
-name. The closest matches, `promptslibrarysync` and `skill-keep-sync`, are the
-*sync targets* two of these apps write to, not their source.
+**Port from the GitHub repository, not from Lovable.** Every app is synced to
+Jelle's GitHub. The Lovable project link identifies *which* app; the repository
+is the source you actually work with, so resolving it is step zero of a port,
+before anything else.
 
-Jelle's position is that all of them are synced to his GitHub. Both can be true
-if they sync to a different account or organisation than `Hopsakee`. Until that
-is settled, **the Lovable project id above is the identifier to trust**, and the
-repository for each app is something to confirm at the start of its port rather
-than assume from its name. `MIGRATION-PLAN.md`'s claim that all the apps are
-"live on GitHub under `Hopsakee`" does not hold for the current scope.
+**The naming convention** (Jelle, 2026-09-26): the repository name is the
+Lovable project name, lower-cased and hyphenated — `Minecraft Mob Maker` →
+`minecraft-mob-maker`, `Game Key Hub` → `game-key-hub`. Two things make this
+reliable rather than a guess:
+
+- **`hopsakee-dashboard` is the exception** — on Lovable it is `My Project Hub`.
+- **Every repository's `README.md` title carries the Lovable name.** That is the
+  cross-check that works regardless of what the repository is called, and the
+  way to identify one whose name does not follow the rule.
+
+The three already-ported apps are the other exceptions, because they were named
+before the convention settled: `Johnny Finder` → `findjd`, `Run Distance
+Planner` → `ren-afstand`, `Point Pals` → `jonkies-tody`. So derive the name,
+then confirm it against the README title.
+
+### Access, and a mistake worth not repeating
+
+An earlier version of this file said these repositories did not exist under
+`Hopsakee`, on the strength of a repository listing that returned 41 and
+included none of them. **That was wrong, and the error is the interesting
+part**: the listing and the search both show only what the Claude GitHub App
+was *granted*, not what exists. Selected-repository access makes a repository
+that is merely ungranted look exactly like one that is absent, and an absence
+is the easier thing to report. The instrument answered a narrower question than
+the one being asked.
+
+So: if a session cannot see one of these repositories, the fix is to add it to
+the Claude GitHub App's repository access (or grant all repositories) at
+<https://claude.ai/connect-github>, and to start the session with it selected —
+a session's repositories are chosen when it starts. Never conclude from a
+listing that a repository does not exist.
