@@ -15,6 +15,19 @@ Keep this template current: when a port teaches something that changes how the
 Port the Lovable app **`<APP>`** (Lovable project `<LOVABLE_ID>`) off Lovable
 hosting and onto my Hetzner box at `hopsakee.top`.
 
+**Step zero: find the GitHub repository, and work from it.** The app's source
+lives in my GitHub, and that repository — its migrations, its
+`supabase/functions/`, its client code — is what you port. The Lovable link
+above only identifies which app it is; do not use the Lovable connector as your
+source. The repository name is the Lovable project name lower-cased and
+hyphenated (`Minecraft Mob Maker` → `minecraft-mob-maker`), with
+`hopsakee-dashboard` (Lovable: `My Project Hub`) as the known exception; every
+repository's `README.md` title carries the Lovable name, so that is the
+cross-check when a name does not match. If you cannot reach the repository, say
+which step failed and that it is an access question, and do not conclude from
+any repository listing that it does not exist — a listing shows what the Claude
+GitHub App was granted, not what exists.
+
 ## Read before proposing anything
 
 In `Hopsakee/lovable-porting`:
