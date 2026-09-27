@@ -456,6 +456,25 @@ added to that:
   - Never send a probe's stderr to `/dev/null`. An unreachable host, a
     rejected password, a paused project and a stopped docker daemon all look
     identical once the only diagnostic is discarded. Capture it and print it.
+- **Every Lovable app commits its `.env`, and the port's first commit must not.**
+  Lovable deviates from the convention here: `.env` is tracked even where
+  `.gitignore` lists it, because it was committed before the rule and an ignore
+  rule does nothing to an already-tracked file — which also means the
+  `.gitignore` entry reads as protection while providing none. What is in it is
+  the project id, URL and publishable key, all of which ship in the client
+  bundle anyway, so **the history is not a leak and does not need rewriting**.
+  The danger is forward-looking: the file is tracked, so the first real secret
+  anyone adds to it gets committed silently. Do this once per port, in the
+  first commit, before anything else lands:
+
+  ```bash
+  git rm --cached .env
+  grep -qxF '.env' .gitignore || printf '\n.env\n' >> .gitignore
+  ```
+
+  Keep `.env.example`. Real secrets belong in the box's file-based secrets on
+  the Hetzner volume, never in a committed file, and a Vite app's
+  `VITE_*` build-time values belong in compose `build.args`.
 - **Bare SQL blocks in a runbook get pasted into a shell.** Write them as a
   runnable `docker exec ... psql <<SQL` heredoc, or expect
   `GRANT: command not found`.

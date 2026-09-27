@@ -86,6 +86,14 @@ it needs instead.
    `hopsakee-server` config and deploy script, the Caddy block, the Authelia
    rule if gated.
 
+**In the port's first commit, untrack `.env`** — `git rm --cached .env`, and
+add it to `.gitignore` if it is not already there. Every Lovable app commits
+it, and in every one the `.gitignore` entry is already present and doing
+nothing, because the file was tracked first. The committed contents are not
+secret (project id, URL, publishable key — all shipped in the client bundle),
+so **do not rewrite history**; the point is that the next secret added to that
+file would be committed silently. Keep `.env.example`.
+
 Deploy target: `<SUBDOMAIN>.hopsakee.top`, `<GATED|PUBLIC>`.
 
 ## Constraints — these are not negotiable

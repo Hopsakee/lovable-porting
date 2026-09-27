@@ -217,22 +217,21 @@ What reading it adds, and some of it is easier than the plan assumed:
   Postgres role instead, since Path C has no GoTrue and no service key.
 - 8 migrations; the client reads `projects`, `categories`, `dashboard_views`,
   `sync_runs`.
-- **It calls Lovable at runtime.** `ai.gateway.lovable.dev` for classification
+- **It calls Lovable at runtime**, and that is deliberately *not* part of the
+  port. `ai.gateway.lovable.dev` for classification
   (`google/gemini-3-flash-preview`) and cover-image generation
-  (`google/gemini-2.5-flash-image`), keyed by `LOVABLE_API_KEY`. Porting off
-  Lovable means this must move, and since both models are Google's and Jelle
-  has a Google account, pointing them straight at Google is the obvious route —
-  the same decision already taken for Tweedelezer hulpje.
+  (`google/gemini-2.5-flash-image`), keyed by `LOVABLE_API_KEY`. Replacing it
+  with Google, Mistral or OpenRouter is its own piece of work, tracked as
+  **`Hopsakee/hopsakee-dashboard` issue #1** (Jelle, 2026-09-27): the port
+  carries this code across as-is, so that a provider swap and a hosting move
+  are never being debugged at the same time.
 - Secrets to move to the box's file-based pattern: `GITHUB_TOKEN`,
   `GITLAB_TOKEN`, `LOVABLE_API_KEY`, `SUPABASE_SERVICE_ROLE_KEY`,
   `SYNC_ALLOWED_USER_IDS`.
-- **`.env` is tracked in git** even though `.gitignore` lists it — it was
-  committed before the rule, and an ignore rule does nothing for an
-  already-tracked file. What is in it is only the project id, URL and
-  publishable key, which ship in the client bundle anyway, so nothing is
-  exposed that was not already public. The trap is that the file is tracked:
-  the next secret added to it gets committed silently, and the `.gitignore`
-  entry reads as protection. Untrack it as part of the port.
+- **`.env` is tracked in git** even though `.gitignore` lists it. This is not
+  specific to this app — Lovable does it to every project — so it is handled as
+  a standing rule for every port rather than a note here; see
+  `PORTING-PLAYBOOK.md` under Operational notes.
 
 ### What the code says about the remaining apps
 
