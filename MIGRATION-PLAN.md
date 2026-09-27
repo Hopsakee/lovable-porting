@@ -329,12 +329,23 @@ projecten met die naam; `c6598aeb` hoort bij de lijst, `3b081154`
 de modelaanroep, geen env-wissel, en de Nederlandse uitvoerkwaliteit moet
 gecontroleerd worden vóór de omschakeling.
 
-**Open: waar de repositories staan.** Van deze veertien apps heeft alleen het
-drietal dat al geport is een repository onder `Hopsakee` — geteld op 2026-09-26
-tegen alle 41 repositories die dat account laat zien. Jelle zegt dat ze
-allemaal naar zijn GitHub gesynchroniseerd zijn; dat kan allebei waar zijn als
-ze onder een ander account of een andere organisatie staan. Tot dat uitgezocht
-is, is het Lovable-project-id de betrouwbare verwijzing en is de repository per
-app iets om aan het begin van die port vast te stellen. De zin bovenaan dit
-document dat alle apps "live on GitHub under `Hopsakee`" staan, klopt niet meer
-voor de huidige scope.
+**De repositories.** Elke app staat in Jelles GitHub. De repositorynaam is de
+Lovable-projectnaam in kleine letters met streepjes (`Minecraft Mob Maker` →
+`minecraft-mob-maker`); `hopsakee-dashboard` is de uitzondering (op Lovable
+heet die `My Project Hub`), en de titel van elke `README.md` draagt de
+Lovable-naam, wat de betrouwbare kruiscontrole is. De drie al geporte apps
+dragen nog oudere namen: `findjd`, `ren-afstand`, `jonkies-tody`.
+
+Er stond hier eerst dat die repositories niet bestonden onder `Hopsakee`, op
+gezag van een lijst van 41 repositories waarin ze ontbraken. **Dat was fout, en
+de fout is het onthouden waard**: zo'n lijst toont alleen wat de Claude GitHub
+App *toegekend* heeft gekregen, niet wat er is. Een repository zonder toegang
+ziet er precies zo uit als een repository die niet bestaat, en het tweede is de
+makkelijkere conclusie. Het instrument beantwoordde een smallere vraag dan de
+gestelde. Ontbreekt er een repository in een sessie, dan is dat een
+toegangskwestie — toevoegen aan de App op <https://claude.ai/connect-github> en
+de sessie ermee starten — nooit een bewijs dat hij niet bestaat.
+
+En bijbehorend: port vanuit de GitHub-repository, niet vanuit de
+Lovable-connector. De migraties, `supabase/functions/` en clientcode in die
+repository zijn de bron; de Lovable-link zegt alleen wélke app het is.
