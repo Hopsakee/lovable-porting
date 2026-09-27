@@ -88,10 +88,12 @@ confirms what the migrations claim. Use the connector only to settle a question
 the repository cannot answer. The numbers below are kept because they are real,
 not because that was the right way to get them.
 
-**Every remaining app has a database enabled**, so there is no static Tier-A
-step left in the queue — the two apps that might have been (Prompt Keeper SQLite, Skill keep) are the two
-that are postponed. The next port is a second Path C app whether or not it is
-meant to be a gentle one.
+Every remaining app has a database *enabled*. **That is not the same as using
+one, and reading it as such was a mistake**: on the strength of it this file
+said there was no static Tier-A step left in the queue, and then `keybind`
+turned out to be exactly that — see "What the code says about the remaining
+apps" below. Lovable provisions a database per project. The client code
+decides, and this file had already said so two paragraphs earlier.
 
 | App | Live schema | Notes |
 |---|---|---|
@@ -131,41 +133,68 @@ Jelle's GitHub. The Lovable project link identifies *which* app; the repository
 is the source you actually work with, so resolving it is step zero of a port,
 before anything else.
 
-**Derive the name, then confirm it — the rule alone is not enough.** The usual
-shape is the Lovable project name lower-cased and hyphenated
-(`Minecraft Mob Maker` → `minecraft-mob-maker`, `Lan Party Planner` →
-`lan-party-planner`, `Carlijn's stappenmaker` → `carlijn-stappenmaker`), but
-enough repositories depart from it that guessing does not work:
+**Derive the name, then confirm it — and confirm it from the project id, not
+the title.** Resolved 2026-09-27 by cloning and reading:
 
-| Lovable project | Repository | How it is known |
+| Lovable project | Repository | Confirmed by |
 |---|---|---|
 | Minecraft Mob Maker | `minecraft-mob-maker` | name |
 | Lan Party Planner | `lan-party-planner` | name |
 | Carlijn's stappenmaker | `carlijn-stappenmaker` | name |
-| Tweedelezer hulpje | `tweedelezer-hulpje` | name |
-| Johnny Finder | `findjd` | ported; predates the convention |
-| Run Distance Planner | `ren-afstand` | ported; predates the convention |
-| Point Pals | `jonkies-tody` | ported; predates the convention |
-| Game Key Hub | **not** `game-key-hub` | `keybind` is the likely one — unconfirmed |
-| My Project Hub | `code-dashboard` | Jelle, 2026-09-27. There is no `hopsakee-dashboard`; that name appears only in `MIGRATION-PLAN.md` |
-| Learn systems and architecture, Style Shopper Pro, Alinea Advies, Idee-blaffer, Scene Weaver | unresolved | `viz-literate`, `kieskeuzer` and `tweedelezer` are the unclaimed candidates, which is three repositories for five apps |
+| Tweedelezer hulpje | `tweedelezer-hulpje` | name (unverified) |
+| Game Key Hub | **`keybind`** | README title |
+| Scene Weaver | **`viz-literate`** | project id in README |
+| Alinea Advies | **`tweedelezer`** | project id in README |
+| Style Shopper Pro | **`kieskeuzer`** | HEAD commit `3c45f87` matches its Lovable preview URL |
+| Johnny Finder / Run Distance Planner / Point Pals | `findjd` / `ren-afstand` / `jonkies-tody` | ported; pre-convention names |
+| Learn systems and architecture | unresolved | |
+| Idee-blaffer | unresolved | |
+| My Project Hub | unresolved — see below | |
 
-**The reliable identifier is the `README.md` title**, which carries the Lovable
-name in every repository. Use it to confirm a derived name, and to identify a
-repository whose name says nothing — that is the whole method, and the table
-above is a shortcut to be re-checked, not trusted.
+**Three identifiers, in order of reliability.** The README *title* only works
+where the README was edited: `keybind` says `# Game Key Hub`, but `kieskeuzer`,
+`viz-literate` and `tweedelezer` all still carry Lovable's default
+`# Welcome to your Lovable project`. What those default READMEs do carry is the
+**Lovable project id**, on the `**URL**:` line — that is the identifier to use,
+and it is exact. Where it reads `REPLACE_WITH_PROJECT_ID` (as in `kieskeuzer`),
+fall back to matching the repository's **HEAD commit sha against the `id-preview-<sha>--<project-id>` prefix in the project's Lovable preview URL**.
 
-**One thing to settle before planning the My Project Hub port**: `MIGRATION-PLAN.md`
-describes `hopsakee-dashboard` as a TanStack Start SSR app on Cloudflare
-Workers, while `code-dashboard`'s own description says it is a GitHub/GitLab
-dashboard built with NiceGUI — Python, not TypeScript. Both cannot be the same
-app in the same shape. Read the repository before accepting either, because the
-plan's "architectural outlier" framing, and the runtime-container conclusion
-that follows from it, rest on the SSR description.
+The kebab-cased name is a hint, not a rule: `Game Key Hub` is `keybind`,
+`Scene Weaver` is `viz-literate`, `Style Shopper Pro` is `kieskeuzer`.
 
-Six of these repositories were pushed within five minutes of each other on
-2026-08-27 — a bulk sync — so push timestamps also line a repository up with a
-Lovable project's `last_edited_at` when the README is ambiguous.
+**`code-dashboard` is not the My Project Hub repository.** Cloned and read
+2026-09-27: it is a Python/NiceGUI single-page dashboard titled `# Code
+Dashboard`, with `main.py`, `pyproject.toml` and `uv.lock`, and no Lovable
+trace anywhere in it. It may well be the app Jelle wants that dashboard to
+become, but it is not the Lovable project `b05e5e82`, so `My Project Hub`'s
+repository is still to be found — and the `hopsakee-dashboard` name in
+`MIGRATION-PLAN.md` matches no repository at all. Settle this before planning
+that port, since the plan's SSR-outlier framing came from a repository nobody
+has since been able to point at.
+
+### What the code says about the remaining apps
+
+Read from the repositories, which is the check that matters — Lovable enables a
+database per project whether or not a code path touches it:
+
+| App | Repo | Migrations | Edge fns | Tables the client actually reads |
+|---|---|---|---|---|
+| Game Key Hub | `keybind` | 2 (only `rate_limits`) | 0 | **none — no `.from()` anywhere** |
+| Style Shopper Pro | `kieskeuzer` | 4 | 1 | `items`, `item_details`, `sessions`, `profiles`, `user_roles` |
+| Scene Weaver | `viz-literate` | 1 | 3 | `stories`, `scenes`, `characters` |
+| Alinea Advies | `tweedelezer` | 1 | 2 | `analysis_results`, `user_roles` |
+
+**Game Key Hub is effectively Tier A.** Its state lives in
+`src/store/gameStore.ts` — zustand `persist`, i.e. localStorage — with a
+`BackupRestore` component for export/import. Nothing imports
+`src/integrations/supabase/client.ts`. That client is still constructed at
+module load from `VITE_SUPABASE_URL` / `VITE_SUPABASE_PUBLISHABLE_KEY`, so a
+build without those may throw before the app renders: the port decides whether
+to strip the dead client or feed it dummy build args, and that answer applies
+to every other app carrying the same vestigial wiring.
+
+The other three are real Path C work, and each has edge functions, which Path C
+has no runtime for.
 
 ### Access, and a mistake worth not repeating
 
