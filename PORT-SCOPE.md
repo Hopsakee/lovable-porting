@@ -131,20 +131,41 @@ Jelle's GitHub. The Lovable project link identifies *which* app; the repository
 is the source you actually work with, so resolving it is step zero of a port,
 before anything else.
 
-**The naming convention** (Jelle, 2026-09-26): the repository name is the
-Lovable project name, lower-cased and hyphenated — `Minecraft Mob Maker` →
-`minecraft-mob-maker`, `Game Key Hub` → `game-key-hub`. Two things make this
-reliable rather than a guess:
+**Derive the name, then confirm it — the rule alone is not enough.** The usual
+shape is the Lovable project name lower-cased and hyphenated
+(`Minecraft Mob Maker` → `minecraft-mob-maker`, `Lan Party Planner` →
+`lan-party-planner`, `Carlijn's stappenmaker` → `carlijn-stappenmaker`), but
+enough repositories depart from it that guessing does not work:
 
-- **`hopsakee-dashboard` is the exception** — on Lovable it is `My Project Hub`.
-- **Every repository's `README.md` title carries the Lovable name.** That is the
-  cross-check that works regardless of what the repository is called, and the
-  way to identify one whose name does not follow the rule.
+| Lovable project | Repository | How it is known |
+|---|---|---|
+| Minecraft Mob Maker | `minecraft-mob-maker` | name |
+| Lan Party Planner | `lan-party-planner` | name |
+| Carlijn's stappenmaker | `carlijn-stappenmaker` | name |
+| Tweedelezer hulpje | `tweedelezer-hulpje` | name |
+| Johnny Finder | `findjd` | ported; predates the convention |
+| Run Distance Planner | `ren-afstand` | ported; predates the convention |
+| Point Pals | `jonkies-tody` | ported; predates the convention |
+| Game Key Hub | **not** `game-key-hub` | `keybind` is the likely one — unconfirmed |
+| My Project Hub | `code-dashboard` | Jelle, 2026-09-27. There is no `hopsakee-dashboard`; that name appears only in `MIGRATION-PLAN.md` |
+| Learn systems and architecture, Style Shopper Pro, Alinea Advies, Idee-blaffer, Scene Weaver | unresolved | `viz-literate`, `kieskeuzer` and `tweedelezer` are the unclaimed candidates, which is three repositories for five apps |
 
-The three already-ported apps are the other exceptions, because they were named
-before the convention settled: `Johnny Finder` → `findjd`, `Run Distance
-Planner` → `ren-afstand`, `Point Pals` → `jonkies-tody`. So derive the name,
-then confirm it against the README title.
+**The reliable identifier is the `README.md` title**, which carries the Lovable
+name in every repository. Use it to confirm a derived name, and to identify a
+repository whose name says nothing — that is the whole method, and the table
+above is a shortcut to be re-checked, not trusted.
+
+**One thing to settle before planning the My Project Hub port**: `MIGRATION-PLAN.md`
+describes `hopsakee-dashboard` as a TanStack Start SSR app on Cloudflare
+Workers, while `code-dashboard`'s own description says it is a GitHub/GitLab
+dashboard built with NiceGUI — Python, not TypeScript. Both cannot be the same
+app in the same shape. Read the repository before accepting either, because the
+plan's "architectural outlier" framing, and the runtime-container conclusion
+that follows from it, rest on the SSR description.
+
+Six of these repositories were pushed within five minutes of each other on
+2026-08-27 — a bulk sync — so push timestamps also line a repository up with a
+Lovable project's `last_edited_at` when the README is ambiguous.
 
 ### Access, and a mistake worth not repeating
 

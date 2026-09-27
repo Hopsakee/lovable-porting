@@ -20,10 +20,11 @@ lives in my GitHub, and that repository — its migrations, its
 `supabase/functions/`, its client code — is what you port. The Lovable link
 above only identifies which app it is; do not use the Lovable connector as your
 source. The repository name is the Lovable project name lower-cased and
-hyphenated (`Minecraft Mob Maker` → `minecraft-mob-maker`), with
-`hopsakee-dashboard` (Lovable: `My Project Hub`) as the known exception; every
-repository's `README.md` title carries the Lovable name, so that is the
-cross-check when a name does not match. If you cannot reach the repository, say
+hyphenated (`Minecraft Mob Maker` → `minecraft-mob-maker`), but several
+repositories depart from it, so derive the name and then **confirm it against
+the repository's `README.md` title**, which carries the Lovable name in every
+repository. `PORT-SCOPE.md` has the mapping worked out so far, including which
+rows are still unconfirmed. If you cannot reach the repository, say
 which step failed and that it is an access question, and do not conclude from
 any repository listing that it does not exist — a listing shows what the Claude
 GitHub App was granted, not what exists.
