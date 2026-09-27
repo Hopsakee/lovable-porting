@@ -14,7 +14,7 @@ identifier; see the open item at the bottom about GitHub repositories.
 
 | # | App | Lovable project | Status |
 |---|---|---|---|
-| 1 | [My Project Hub](https://lovable.dev/projects/b05e5e82-827d-45e6-b814-5d7282c8465f) | `b05e5e82` | **next — Jelle's call, goes first** |
+| 1 | [My Project Hub](https://lovable.dev/projects/b05e5e82-827d-45e6-b814-5d7282c8465f) | `b05e5e82` | **highest priority — Jelle uses it every day** |
 | 2 | [Minecraft Mob Maker](https://lovable.dev/projects/f56c2960-fe04-493a-9dcc-ec14f26ae474) | `f56c2960` | to port |
 | 3 | [Game Key Hub](https://lovable.dev/projects/3aa4635e-2afb-4464-82e3-f453cbd29965) | `3aa4635e` | to port |
 | 4 | [Learn systems and architecture](https://lovable.dev/projects/dbd40690-40b2-452c-bc9c-5a21b3b4feb8) | `dbd40690` | to port |
@@ -53,14 +53,30 @@ before proposing them again.
 
 ## Per-app decisions
 
-**My Project Hub goes first (2026-09-26).** This reverses the original
-ascending-risk order, which put it last as the architectural outlier: a
-TanStack Start SSR app on Cloudflare Workers, not a static SPA, using Supabase
-Storage for cover images and talking to three external APIs. Jelle's call, made
-knowing that. Consequences worth expecting rather than rediscovering: it needs
-a runtime container rather than the static-serve base image, so it is the first
-app that does not fit the pattern the three finished ports share; and Path C
-has no Supabase Storage, so its cover images need somewhere to live.
+**My Project Hub goes first, and the reason is use, not difficulty
+(2026-09-26, sharpened 2026-09-27).** Jelle uses it *every day*; none of the
+others are in daily use. That makes it the app where porting pays off soonest,
+and it outranks the "one rung at a time" sequencing — which is a way of
+improving the playbook, not a reason to leave the most-used app on Lovable.
+
+It reverses the original ascending-risk order, which put it last as the
+architectural outlier: a TanStack Start SSR app on Cloudflare Workers, not a
+static SPA, using Supabase Storage for cover images and talking to three
+external APIs. If that description holds, expect rather than rediscover: it
+needs a runtime container rather than the static-serve base image, so it is the
+first app that does not fit the pattern the three finished ports share, and
+Path C has no Supabase Storage, so its cover images need somewhere to live. But
+that description has not been verified against the repository — see "The GitHub
+repositories" below. **Read `hopsakee-dashboard` first and re-rate the app**;
+if it is a plain Vite SPA like its neighbours, the outlier framing dissolves
+and it is both the most useful and an easy port.
+
+**The one rung worth taking before it** is Game Key Hub (`keybind`), and only
+because it is genuinely about a day's work and it settles a question that
+recurs in every remaining app: what to do with a Supabase client that is
+constructed at module load and never used. If reading `hopsakee-dashboard`
+shows a straightforward app, do them in either order — do not let the ladder
+delay the app that gets used daily.
 
 **Tweedelezer hulpje runs on Google (2026-09-26).** Jelle has a Google account,
 so the document-analysis call goes there. Not OpenAI, and not the Azure AI
@@ -149,7 +165,7 @@ the title.** Resolved 2026-09-27 by cloning and reading:
 | Johnny Finder / Run Distance Planner / Point Pals | `findjd` / `ren-afstand` / `jonkies-tody` | ported; pre-convention names |
 | Learn systems and architecture | unresolved | |
 | Idee-blaffer | unresolved | |
-| My Project Hub | unresolved — see below | |
+| My Project Hub | **`hopsakee-dashboard`** | Jelle, 2026-09-27 — `git@github.com:Hopsakee/hopsakee-dashboard.git`. Not yet readable here; see below |
 
 **Three identifiers, in order of reliability.** The README *title* only works
 where the README was edited: `keybind` says `# Game Key Hub`, but `kieskeuzer`,
@@ -162,15 +178,26 @@ fall back to matching the repository's **HEAD commit sha against the `id-preview
 The kebab-cased name is a hint, not a rule: `Game Key Hub` is `keybind`,
 `Scene Weaver` is `viz-literate`, `Style Shopper Pro` is `kieskeuzer`.
 
-**`code-dashboard` is not the My Project Hub repository.** Cloned and read
-2026-09-27: it is a Python/NiceGUI single-page dashboard titled `# Code
-Dashboard`, with `main.py`, `pyproject.toml` and `uv.lock`, and no Lovable
-trace anywhere in it. It may well be the app Jelle wants that dashboard to
-become, but it is not the Lovable project `b05e5e82`, so `My Project Hub`'s
-repository is still to be found — and the `hopsakee-dashboard` name in
-`MIGRATION-PLAN.md` matches no repository at all. Settle this before planning
-that port, since the plan's SSR-outlier framing came from a repository nobody
-has since been able to point at.
+**`hopsakee-dashboard` is the My Project Hub repository**, and it is a
+different thing from `code-dashboard`. Both mistakes on the way here are worth
+keeping, because each was a confident claim built on a narrow instrument:
+
+- This file said `hopsakee-dashboard` matched no repository. It exists —
+  `git@github.com:Hopsakee/hopsakee-dashboard.git`. It was simply not in the
+  Claude GitHub App's granted set, which is not something any listing can show.
+- `code-dashboard` was then taken as the same repository under another name.
+  Cloned and read 2026-09-27: it is a Python/NiceGUI single-page dashboard
+  titled `# Code Dashboard`, with `main.py`, `pyproject.toml` and `uv.lock`,
+  and no Lovable trace anywhere. A plausible neighbour of this app — perhaps
+  what Jelle wants it to become — but not the Lovable project `b05e5e82`.
+
+So `MIGRATION-PLAN.md`'s description of this app (TanStack Start SSR on
+Cloudflare Workers, Supabase Storage for cover images, three external APIs) may
+well be right after all; it was never contradicted, only unverifiable while the
+repository was out of reach. Read `hopsakee-dashboard` before planning the
+port, and treat the SSR framing as unconfirmed until then — the
+runtime-container conclusion, and this app's whole difficulty rating, follow
+from it.
 
 ### What the code says about the remaining apps
 
