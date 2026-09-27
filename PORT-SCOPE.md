@@ -165,7 +165,7 @@ the title.** Resolved 2026-09-27 by cloning and reading:
 | Johnny Finder / Run Distance Planner / Point Pals | `findjd` / `ren-afstand` / `jonkies-tody` | ported; pre-convention names |
 | Learn systems and architecture | unresolved | |
 | Idee-blaffer | unresolved | |
-| My Project Hub | **`hopsakee-dashboard`** | Jelle, 2026-09-27 — `git@github.com:Hopsakee/hopsakee-dashboard.git`. Not yet readable here; see below |
+| My Project Hub | **`hopsakee-dashboard`** | project id in README, and HEAD `7e0a0c7` matches its Lovable preview URL |
 
 **Three identifiers, in order of reliability.** The README *title* only works
 where the README was edited: `keybind` says `# Game Key Hub`, but `kieskeuzer`,
@@ -178,26 +178,61 @@ fall back to matching the repository's **HEAD commit sha against the `id-preview
 The kebab-cased name is a hint, not a rule: `Game Key Hub` is `keybind`,
 `Scene Weaver` is `viz-literate`, `Style Shopper Pro` is `kieskeuzer`.
 
-**`hopsakee-dashboard` is the My Project Hub repository**, and it is a
-different thing from `code-dashboard`. Both mistakes on the way here are worth
-keeping, because each was a confident claim built on a narrow instrument:
+**`hopsakee-dashboard` is the My Project Hub repository**, confirmed by
+cloning it 2026-09-27, and it is a different thing from `code-dashboard` (a
+Python/NiceGUI dashboard with `main.py` and no Lovable trace — a neighbour of
+this app, not this app). Two mistakes on the way here are worth keeping,
+because each was a confident claim built on an instrument that could not answer
+the question: this file first said `hopsakee-dashboard` matched no repository
+(it was ungranted, which no listing shows), then took `code-dashboard` for it.
 
-- This file said `hopsakee-dashboard` matched no repository. It exists —
-  `git@github.com:Hopsakee/hopsakee-dashboard.git`. It was simply not in the
-  Claude GitHub App's granted set, which is not something any listing can show.
-- `code-dashboard` was then taken as the same repository under another name.
-  Cloned and read 2026-09-27: it is a Python/NiceGUI single-page dashboard
-  titled `# Code Dashboard`, with `main.py`, `pyproject.toml` and `uv.lock`,
-  and no Lovable trace anywhere. A plausible neighbour of this app — perhaps
-  what Jelle wants it to become — but not the Lovable project `b05e5e82`.
 
-So `MIGRATION-PLAN.md`'s description of this app (TanStack Start SSR on
-Cloudflare Workers, Supabase Storage for cover images, three external APIs) may
-well be right after all; it was never contradicted, only unverifiable while the
-repository was out of reach. Read `hopsakee-dashboard` before planning the
-port, and treat the SSR framing as unconfirmed until then — the
-runtime-container conclusion, and this app's whole difficulty rating, follow
-from it.
+### My Project Hub (`hopsakee-dashboard`) — read 2026-09-27
+
+**`MIGRATION-PLAN.md` was right about the shape.** `@tanstack/react-start` with
+`@cloudflare/vite-plugin` and a `wrangler.jsonc` whose `main` is
+`src/server.ts`, a plain fetch handler. It is a server-rendered app, not a
+static SPA, and it is the only one in the queue that is.
+
+What reading it adds, and some of it is easier than the plan assumed:
+
+- **No Supabase edge functions at all.** The server logic is 20
+  `createServerFn` handlers in `src/lib/{projects,export,views}.functions.ts`,
+  which run in the app's *own* runtime. Path C's missing Deno runtime — the
+  problem that has to be solved for Style Shopper Pro, Scene Weaver and Alinea
+  Advies — simply does not arise here.
+- **It does need a runtime container**, so it is the first app that cannot use
+  the static-serve base image. The open question is the target: Cloudflare
+  Workers today, with `nodejs_compat` set and a standard fetch entry, so a Node
+  target is plausible but unproven. **Settle that before anything else** — it
+  decides the Dockerfile and most of the work.
+- **Supabase Storage is real here**, unlike the vestigial wiring elsewhere: a
+  `project-covers` bucket written and signed from `src/lib/ai.server.ts` and
+  `projects.functions.ts`. Path C has none, so this needs a replacement —
+  a disk volume served by Caddy, or an S3-compatible service.
+- **Auth is a good fit.** `src/integrations/supabase/auth-middleware.ts` calls
+  `supabase.auth.getClaims(token)`; the Authelia→JWT shim already produces
+  claims and `jonkies-tody` solved this exact shape.
+- **A server-side service-role client** (`client.server.ts`) needs a privileged
+  Postgres role instead, since Path C has no GoTrue and no service key.
+- 8 migrations; the client reads `projects`, `categories`, `dashboard_views`,
+  `sync_runs`.
+- **It calls Lovable at runtime.** `ai.gateway.lovable.dev` for classification
+  (`google/gemini-3-flash-preview`) and cover-image generation
+  (`google/gemini-2.5-flash-image`), keyed by `LOVABLE_API_KEY`. Porting off
+  Lovable means this must move, and since both models are Google's and Jelle
+  has a Google account, pointing them straight at Google is the obvious route —
+  the same decision already taken for Tweedelezer hulpje.
+- Secrets to move to the box's file-based pattern: `GITHUB_TOKEN`,
+  `GITLAB_TOKEN`, `LOVABLE_API_KEY`, `SUPABASE_SERVICE_ROLE_KEY`,
+  `SYNC_ALLOWED_USER_IDS`.
+- **`.env` is tracked in git** even though `.gitignore` lists it — it was
+  committed before the rule, and an ignore rule does nothing for an
+  already-tracked file. What is in it is only the project id, URL and
+  publishable key, which ship in the client bundle anyway, so nothing is
+  exposed that was not already public. The trap is that the file is tracked:
+  the next secret added to it gets committed silently, and the `.gitignore`
+  entry reads as protection. Untrack it as part of the port.
 
 ### What the code says about the remaining apps
 
