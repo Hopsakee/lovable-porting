@@ -124,6 +124,10 @@ Deploy target: `<SUBDOMAIN>.hopsakee.top`, `<GATED|PUBLIC>`.
   here". Check that the UI distinguishes *error* from *empty*.
 - **If a decision is genuinely open — which is not obvious from the repo —
   stop and ask.** Do not pick one and build silently.
+- **Merging the port changes the Lovable-hosted copy too** — the repo is
+  two-way synced with Lovable. The runbook must take Lovable's data export
+  *before* the app PR is merged, and freeze use of the Lovable app from then
+  on.
 - **Fetch `origin/main` in every repo you touch before writing anything.** A
   multi-repo port means more than one clone drifts, and a stale one reads
   exactly like a repo where the work has not been done yet.
