@@ -5,7 +5,7 @@
 sections as history. When the two disagree about *which apps* or *in what
 order*, this file wins. Update it here rather than re-deciding in chat.
 
-Last updated **2026-09-26**, from Jelle's own list.
+Last updated **2026-10-03** (My Project Hub status); the list is from Jelle, 2026-09-26.
 
 ## The list — 14 to port
 
@@ -14,7 +14,7 @@ identifier; see the open item at the bottom about GitHub repositories.
 
 | # | App | Lovable project | Status |
 |---|---|---|---|
-| 1 | [My Project Hub](https://lovable.dev/projects/b05e5e82-827d-45e6-b814-5d7282c8465f) | `b05e5e82` | **highest priority — Jelle uses it every day** |
+| 1 | [My Project Hub](https://lovable.dev/projects/b05e5e82-827d-45e6-b814-5d7282c8465f) | `b05e5e82` | **built and rehearsed, awaiting cutover** → `projecthub.hopsakee.top` (2026-10-03); Jelle uses it every day |
 | 2 | [Minecraft Mob Maker](https://lovable.dev/projects/f56c2960-fe04-493a-9dcc-ec14f26ae474) | `f56c2960` | to port |
 | 3 | [Game Key Hub](https://lovable.dev/projects/3aa4635e-2afb-4464-82e3-f453cbd29965) | `3aa4635e` | to port |
 | 4 | [Learn systems and architecture](https://lovable.dev/projects/dbd40690-40b2-452c-bc9c-5a21b3b4feb8) | `dbd40690` | to port |
@@ -232,6 +232,30 @@ What reading it adds, and some of it is easier than the plan assumed:
   specific to this app — Lovable does it to every project — so it is handled as
   a standing rule for every port rather than a note here; see
   `PORTING-PLAYBOOK.md` under Operational notes.
+
+### My Project Hub — confirmed and built, 2026-10-03
+
+The 2026-09-27 survey held. Live counts (read-only, via the Lovable connector):
+1 user, 71 projects, 4 categories, 0 dashboard views, 8 sync runs, 32 stored
+covers totalling about 27 MB, 4 policies, 2 triggers and 1 function in
+`public`. What the build settled:
+
+- **Node, not Workers**: the build goes through Nitro, and one line in
+  `vite.config.ts` pins `node-server`. Proved by building, running and loading
+  it in Chromium before any other work.
+- **Covers live in Postgres** (`public.project_covers`, bytea, RLS), loaded by
+  the browser with the user's token, like all other data. Decided with Jelle:
+  one database, one backup.
+- **No service role**: the background classification runs with the caller's
+  own client; storage moved into the table. Nothing in the app can bypass RLS.
+- **PostgREST is not exposed at all**: the browser only calls the app's own
+  server functions. Same-origin by construction.
+- Deploy target `projecthub.hopsakee.top`, Authelia groups `me` and `admins`.
+
+Everything is in `hopsakee-dashboard/PORT-NOTES.md`,
+`hopsakee-dashboard/docs/CUTOVER-RUNBOOK.md` and the hopsakee-server
+`config/projecthub/`. Not done: the cutover itself, and the off-box pull in
+`hoggle-macmini`. Lessons in `learnings/hopsakee-dashboard.md`.
 
 ### What the code says about the remaining apps
 
