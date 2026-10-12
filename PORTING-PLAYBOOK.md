@@ -581,9 +581,15 @@ When the real cutover confirms or contradicts a line, update it.
   re-run the idempotent grants file. Rehearsed; the user then sees their data.
 
 ### Process
-- **Merging the port changes the Lovable copy too** (two-way GitHub sync). Take
-  Lovable's data export *before* merging, and freeze use of the Lovable app
-  from then on.
+- **While the repo is still synced with Lovable, merging the port changes the
+  Lovable copy too.** Then take the data export *before* merging. Jelle
+  disconnected the sync for hopsakee-dashboard before its cutover, which
+  removes that ordering; freezing use of the Lovable app from the export on
+  still applies.
+- **Lovable's export is two separate downloads**: a database zip with one
+  `.backup` (for hopsakee-dashboard, PostgreSQL 17.6 dumped by `pg_dump` 18.6;
+  `pg_restore` 17 reads it), and the storage files. `storage.objects` in the
+  database only describes the files. Ask for both.
 - **Laptop-originated tokens go through `client-deploy.sh`** (hopsakee-server
   `DEPLOYING.md`). Secrets that mean nothing off the box are generated there,
   once, by the runbook.
