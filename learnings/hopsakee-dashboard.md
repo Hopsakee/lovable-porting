@@ -36,6 +36,12 @@ server" heading is for after the cutover. The app-side decisions are in
   (`supabase.auth.getClaims`), and there is no GoTrue now. The replacement
   (`whoami()` through PostgREST) is new, not copied.
 
+- **"The storage export keeps the bucket's folders."** It does not. The real
+  export (2026-10-12) is 33 flat `<project id>.png` files; the database says
+  `<user id>/<project id>.png`. Rehearsing on the real export, with Jelle's
+  go-ahead, is what caught it. The import's missing-file refusal would have
+  stopped the cutover safely, but on cutover day rather than before it.
+
 ## Where the iterations went
 
 Ranked by time:

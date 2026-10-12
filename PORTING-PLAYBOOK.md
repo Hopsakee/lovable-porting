@@ -590,6 +590,12 @@ When the real cutover confirms or contradicts a line, update it.
   `.backup` (for hopsakee-dashboard, PostgreSQL 17.6 dumped by `pg_dump` 18.6;
   `pg_restore` 17 reads it), and the storage files. `storage.objects` in the
   database only describes the files. Ask for both.
+- **VERIFIED on real data (hopsakee-dashboard, 2026-10-12): the storage export
+  is flat.** The zip holds one `<project id>.png` per object, with no folders,
+  while the database names them `<user id>/<project id>.png`. An import that
+  resolves the database path literally refuses to run. Resolve by file name
+  as a fallback (`hopsakee-dashboard/backend/migrate/covers-lib.sh`). The same
+  real archive restored with **no errors**, unlike jonkies-tody's.
 - **Laptop-originated tokens go through `client-deploy.sh`** (hopsakee-server
   `DEPLOYING.md`). Secrets that mean nothing off the box are generated there,
   once, by the runbook.
