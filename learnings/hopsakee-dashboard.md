@@ -1,6 +1,7 @@
 # Port learnings — My Project Hub (`hopsakee-dashboard`)
 
-Date: 2026-09-27 (survey) — 2026-10-03 (built and rehearsed)
+Date: 2026-09-27 (survey) — 2026-10-03 (built and rehearsed) — 2026-10-13
+(Lovable clean-up, hopsakee-dashboard PR #4)
 Ported by: Claude Code on the web
 Tier: B, and the first server-rendered app (outlier)
 
@@ -104,13 +105,54 @@ Ranked by time:
 Folded into `PORTING-PLAYBOOK.md` in the same change: a new section,
 "Server-rendered apps, and Path C refinements".
 
+## Cleaning up after Lovable is disconnected (2026-10-13)
+
+Once Jelle disconnected the Lovable sync, the repo no longer had to stay
+editable from Lovable. What went, and what that taught:
+
+- **What could go:** `.lovable/`, `bun.lock`, `bunfig.toml`, `wrangler.jsonc`,
+  `supabase/config.toml`, the `@lovable.dev/vite-tanstack-config` wrapper, 36
+  unused shadcn/ui components and their 30 packages (lockfile 529 → 420), and
+  the Supabase names (`supabase/migrations/` → `backend/sql/migrations/`,
+  `src/integrations/supabase/` → `src/integrations/postgrest/`,
+  `requireSupabaseAuth` → `requireAuth`, `context.supabase` → `context.db`).
+  Also easy to miss: `og:image` tags pointing at Lovable's
+  `gpt-engineer-file-uploads` bucket.
+- **What stays:** the "Lovable project" flag on projects (a feature, not a
+  leftover) and the one-off `backend/migrate/` scripts.
+- **Unwrapping the Vite config.** The wrapper adds TanStack Start, React,
+  Tailwind, tsconfig paths, and Nitro *for builds only*. A plain config must
+  do the same: with Nitro in the plugin list for `vite dev` too, dev does
+  extra work for nothing. `vite preview` then has nothing to serve (the build
+  output is `.output/`), so drop that script.
+- **A custom `importProtection.client.files` replaces TanStack's default
+  (`**/*.server.*`), it does not extend it.** My first plain config set
+  `["**/server/**"]`, which matched nothing and switched the default off. The
+  fix was a rename, not a rule: the database client became `db.server.ts`.
+- **A fresh `npm install` no longer resolves** (newer TanStack Start wants
+  Vite 8). Prune from the existing lockfile instead: remove the packages from
+  `package.json`, run `npm install` in `node:22-alpine` against the old
+  lockfile, then `npm ci` to confirm.
+- **`npm pkg delete devDependencies.@lovable.dev/...` splits on the dot** and
+  leaves `"@lovable": {}` behind, which npm then rejects. Edit the JSON.
+- **The generated Supabase types claim `PostgrestVersion: "14.5"`.** Set it
+  to the server's version (12 here); postgrest-js unlocks typed features by it.
+- **Code review of the clean-up found a real bug:** sync ignored the
+  `{ error }` of its own selects, updates and inserts, and counted failures as
+  imported or updated projects. Expect the same in other Lovable apps: grep
+  for `await .*\.from(` whose result is not destructured with `error`.
+- **One schema script.** `backend/sql/apply.sh` runs prerequisites →
+  migrations → Path C additions, and refuses a non-empty database (the
+  migrations cannot run twice). The runbook and the local `dev/` stack both
+  call it, so the order lives in one place.
+
 ## Open questions for Jelle
 
-- Can `LOVABLE_API_KEY` be read out of Lovable? If not, AI classification and
-  cover generation are off until issue #1 (everything else works).
-- The layout of Lovable's storage export for this project. The import
-  tolerates two layouts and refuses on a missing file, but has not seen the
-  real one.
+- ~~Can `LOVABLE_API_KEY` be read out of Lovable?~~ Decided: no Lovable key.
+  AI is off; issue #1 replaces it with an OpenAI-compatible provider after
+  the cutover, with covers optional.
+- ~~The layout of Lovable's storage export.~~ Answered 2026-10-12: flat
+  `<project id>.png` files (see above).
 - Off-box: add Project Hub to the `hoggle-macmini` pull (one artifact).
 
 ## What only showed up on the real server
