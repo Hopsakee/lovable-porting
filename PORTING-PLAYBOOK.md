@@ -531,6 +531,20 @@ When the real cutover confirms or contradicts a line, update it.
   `@hookform/resolvers`, against eslint's `ajv@6`). If the package is unused,
   remove it. That is narrower than `legacy-peer-deps` for the whole install.
 
+### Once the Lovable sync is disconnected, unwrap and clean up
+- Replace `@lovable.dev/vite-tanstack-config` with a plain `vite.config.ts`:
+  `tanstackStart`, `viteReact`, `tailwindcss`, `vite-tsconfig-paths`, and
+  `nitro({ preset: "node-server" })` only when `command === "build"` (as the
+  wrapper did). Do not set `importProtection.client.files`: it replaces the
+  `**/*.server.*` default instead of extending it. Name server-only modules
+  `*.server.ts` instead.
+- Delete `.lovable/`, `bun.lock`, `bunfig.toml`, `wrangler.jsonc`,
+  `supabase/config.toml`, unused `components/ui/*` and their packages. Prune
+  the lockfile from the existing one (a fresh resolve may pull incompatible
+  versions). Grep for `gpt-engineer-file-uploads` (Lovable-hosted og:image).
+- While there: check every `await db.from(...)` reads its `error`.
+  hopsakee-dashboard's sync counted failed writes as successes.
+
 ### `"sideEffects": false` silently drops bare imports
 - Lovable's TanStack template declares it. A bare `import "./x"` whose module
   only has side effects is removed from the bundle with no warning. Export a
